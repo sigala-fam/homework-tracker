@@ -1,7 +1,8 @@
 // ── Firebase ──────────────────────────────────────────────
 import { initializeApp }                                         from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut,
-         signInWithPopup, GoogleAuthProvider,
+         signInWithPopup, signInWithRedirect, getRedirectResult,
+         GoogleAuthProvider,
          signInWithEmailAndPassword,
          createUserWithEmailAndPassword,
          sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -1708,8 +1709,21 @@ function clearLoginError() { loginError.classList.add('hidden'); }
 
 document.getElementById('btnGoogleSignIn').addEventListener('click', async () => {
   clearLoginError();
-  try { await signInWithPopup(auth, googleProvider); }
-  catch (e) { showLoginError('Google sign-in failed. Try again.'); }
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (e) {
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+      // Safari/mobile blocks popups — fall back to redirect
+      await signInWithRedirect(auth, googleProvider);
+    } else {
+      showLoginError('Google sign-in failed. Try again.');
+    }
+  }
+});
+
+// Handle the redirect result when returning from Google on mobile
+getRedirectResult(auth).catch(e => {
+  if (e && e.code) showLoginError('Google sign-in failed. Try again.');
 });
 
 document.getElementById('btnShowEmail').addEventListener('click', () => {
