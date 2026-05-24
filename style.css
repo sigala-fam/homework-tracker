@@ -1339,3 +1339,85 @@ body {
   border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 12px; width: 100%; text-align: left; line-height: 1.5;
 }
+
+/* ══════════════════════════════
+   MOBILE  (≤ 640 px)
+══════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* Header — tighten up so it fits */
+  .header { padding: 0 12px; gap: 8px; }
+  .header h1 { font-size: 14px; }
+  .icon-btn { padding: 5px 8px; font-size: 11px; }
+  #openSettings, #openCustomize { display: none; } /* hide less-used buttons */
+
+  /* Board — allow horizontal scroll as before, just less padding */
+  .board-view { padding: 12px 10px; }
+  .board-column { width: 270px; }
+
+  /* Calendar — stack panel + sidebar vertically */
+  .calendar-view {
+    flex-direction: column;
+    padding: 10px;
+    gap: 10px;
+    height: auto;
+    min-height: calc(100vh - 56px);
+  }
+
+  /* Hide the legend sidebar on mobile — not enough room */
+  .cal-sidebar { display: none; }
+
+  .cal-panel { width: 100%; }
+
+  .cal-top {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  #calTitle { font-size: 13px; min-width: 120px; }
+
+  /* Shrink the calendar grid cells */
+  .calendar-grid { padding: 8px 6px; }
+  .cal-weekdays { gap: 2px; }
+  .cal-weekday  { font-size: 9px; letter-spacing: 0; padding: 2px 0; }
+  .cal-days     { gap: 2px; }
+
+  .cal-day {
+    min-height: 52px;
+    padding: 4px 3px;
+    border-radius: 6px;
+  }
+
+  .day-num {
+    width: 18px; height: 18px;
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+
+  .day-dot  { width: 5px; height: 5px; }
+  .day-chip { font-size: 8px; padding: 1px 3px; }
+
+  /* Weekly view on mobile */
+  .weekly-header-row,
+  .weekly-row { grid-template-columns: 70px 1fr; }
+  .weekly-data-cell:nth-child(3),
+  .weekly-data-cell:nth-child(4),
+  .weekly-th:nth-child(3),
+  .weekly-th:nth-child(4) { display: none; }
+
+  /* Day detail panel */
+  .day-detail { margin: 0 6px 10px; }
+
+  /* Plan view */
+  .plan-view { padding: 10px; }
+  .plan-panel { max-width: 100%; }
+
+  /* Modals — full width on mobile */
+  .modal, .modal-wide, .modal-sm {
+    width: calc(100vw - 24px);
+    padding: 18px 16px;
+  }
+
+  /* Login card */
+  .login-card { padding: 32px 20px; }
+}
