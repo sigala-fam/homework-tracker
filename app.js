@@ -3,7 +3,8 @@ import { initializeApp }                                         from 'https://w
 import { getAuth, onAuthStateChanged, signOut,
          signInWithPopup, GoogleAuthProvider,
          signInWithEmailAndPassword,
-         createUserWithEmailAndPassword }                        from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+         createUserWithEmailAndPassword,
+         sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc }                    from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -1747,6 +1748,19 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     };
     showLoginError(msgs[e.code] || 'Something went wrong. Try again.');
   }
+});
+
+document.getElementById('btnForgotPassword').addEventListener('click', async () => {
+  const email = document.getElementById('loginEmail').value.trim();
+  const msg   = document.getElementById('forgotMsg');
+  if (!email) { msg.textContent = 'Type your email above first, then click Forgot password.'; msg.classList.remove('hidden'); return; }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    msg.textContent = '✅ Reset email sent! Check your inbox.';
+  } catch (e) {
+    msg.textContent = 'Could not send reset email. Check the address and try again.';
+  }
+  msg.classList.remove('hidden');
 });
 
 document.getElementById('loginModeToggle').addEventListener('click', e => {
