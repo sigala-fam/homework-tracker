@@ -280,7 +280,7 @@ body {
 }
 .subject-group:hover { box-shadow: var(--shadow); }
 
-.subject-color-bar { height: 4px; background: var(--subject-color, #6366F1); flex-shrink: 0; border-radius: 10px 10px 0 0; }
+.subject-color-bar { height: 6px; background: var(--subject-color, #6366F1); flex-shrink: 0; border-radius: 10px 10px 0 0; }
 
 .subject-group-header {
   display: flex; align-items: center; gap: 8px;
@@ -288,7 +288,12 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .subject-group-label { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; color: var(--text); flex: 1; }
-.subject-group-count { font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.subject-group-count {
+  font-size: 10px; color: var(--subject-color, #6366F1); font-weight: 800;
+  white-space: nowrap; padding: 2px 8px; border-radius: 20px;
+  border: 1.5px solid var(--subject-color, #6366F1);
+  background: transparent;
+}
 
 /* ── Kanban Card — flat task row inside class card ── */
 .kanban-card {
@@ -407,7 +412,10 @@ body {
 .subtask-add-input::placeholder { color: var(--muted); }
 .subtask-add-input:focus { border-bottom-color: var(--accent); }
 
-.group-empty { font-size: 12px; color: var(--muted); padding: 10px 13px; font-style: italic; }
+.group-empty {
+  font-size: 12px; color: var(--muted); padding: 14px 13px;
+  text-align: center; font-style: italic; letter-spacing: 0.1px;
+}
 
 /* Inline quick-add */
 .inline-add-trigger {
@@ -1224,3 +1232,97 @@ body {
   background: var(--surface-2); color: var(--text); font-family: inherit;
 }
 .customize-title-input:focus { outline: none; border-color: var(--accent); }
+
+/* ══════════════════════════════
+   LOGIN SCREEN
+══════════════════════════════ */
+.login-overlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 300;
+  padding: 20px;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px;
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.login-logo { font-size: 48px; line-height: 1; }
+.login-title { font-size: 24px; font-weight: 900; color: var(--text); letter-spacing: -0.5px; }
+.login-subtitle { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 280px; }
+
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 11px 16px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--text);
+  cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+.btn-google:hover { background: var(--surface-2); box-shadow: var(--shadow-sm); }
+
+.login-divider {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--muted);
+}
+.login-divider::before, .login-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+.btn-show-email {
+  width: 100%; padding: 11px 16px;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 10px; font-size: 14px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-show-email:hover { background: var(--accent-hover); }
+
+.login-form {
+  width: 100%; display: flex; flex-direction: column; gap: 9px;
+  margin-top: 4px;
+}
+.login-form input {
+  width: 100%; padding: 10px 13px;
+  border: 1px solid var(--border); border-radius: 9px;
+  font-size: 14px; background: var(--surface-2); color: var(--text);
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.login-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+
+.btn-login-submit {
+  width: 100%; padding: 11px;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 9px; font-size: 14px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-login-submit:hover { background: var(--accent-hover); }
+
+.btn-mode-toggle {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--accent); font-family: inherit;
+  font-weight: 600; padding: 4px 0;
+  transition: opacity 0.15s;
+}
+.btn-mode-toggle:hover { opacity: 0.75; text-decoration: underline; }
+
+.login-error {
+  color: #DC2626; background: #FEE2E2; border: 1px solid #FECACA;
+  border-radius: 8px; padding: 9px 13px;
+  font-size: 13px; font-weight: 500; width: 100%; text-align: left;
+  line-height: 1.5;
+}
+[data-theme="dark"] .login-error { background: #3b1515; border-color: #7f1d1d; color: #f87171; }
+
+.sign-out-btn { color: var(--muted) !important; }

@@ -1,3 +1,26 @@
+// ── Firebase ──────────────────────────────────────────────
+import { initializeApp }                                         from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, signOut,
+         signInWithPopup, GoogleAuthProvider,
+         signInWithEmailAndPassword,
+         createUserWithEmailAndPassword }                        from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc }                    from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
+  authDomain:        'homework-tracker-761e1.firebaseapp.com',
+  projectId:         'homework-tracker-761e1',
+  storageBucket:     'homework-tracker-761e1.firebasestorage.app',
+  messagingSenderId: '1026373078825',
+  appId:             '1:1026373078825:web:73e00e3cbc647583c97138',
+  measurementId:     'G-Y67CG1QKTZ',
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth  = getAuth(fbApp);
+const db    = getFirestore(fbApp);
+let currentUser = null;
+
 // ── Default Subjects ─────────────────────────────────────
 const DEFAULT_SUBJECTS = [
   { id: 'chem',    label: 'Chemistry',             color: '#14B8A6', day: 'a', priority: 3 },
@@ -30,27 +53,11 @@ const DEFAULT_COLUMNS = [
 ];
 
 // ── State ─────────────────────────────────────────────────
-let columns = (() => {
-  const stored = JSON.parse(localStorage.getItem('hw-columns') || 'null');
-  return stored || DEFAULT_COLUMNS.map(c => ({ ...c }));
-})();
-
-let subjects = (() => {
-  const stored = JSON.parse(localStorage.getItem('hw-subjects') || 'null');
-  if (!stored) return DEFAULT_SUBJECTS;
-  return stored.map(s => {
-    const def = DEFAULT_SUBJECTS.find(d => d.id === s.id);
-    return {
-      priority: 3,
-      ...(def || {}),
-      ...s,
-      day: s.day || (def ? def.day : 'a'),
-    };
-  });
-})();
-
-let tasks    = JSON.parse(localStorage.getItem('hw-tasks')    || '[]');
-let events   = JSON.parse(localStorage.getItem('hw-events')   || '[]');
+// (populated from Firestore after login — defaults shown until then)
+let columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
+let subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
+let tasks    = [];
+let events   = [];
 let theme    = localStorage.getItem('hw-theme') || 'light';
 
 let activeView  = 'board';
@@ -63,13 +70,14 @@ let prefilterDay    = null;
 let pendingReflectId  = null;  // task id waiting for reflection
 const expandedSubtasks = new Set(); // task IDs with checklist panel open
 
-// ── Persist ───────────────────────────────────────────────
-function saveTasks()    { localStorage.setItem('hw-tasks',    JSON.stringify(tasks));    }
-function saveSubjects() { localStorage.setItem('hw-subjects', JSON.stringify(subjects)); }
-function saveEvents()   { localStorage.setItem('hw-events',   JSON.stringify(events));   }
-function saveColumns()  { localStorage.setItem('hw-columns',  JSON.stringify(columns));  }
+// ── Persist (Firestore) ───────────────────────────────────
+function userDocRef() { return doc(db, 'users', currentUser.uid); }
+function saveTasks()    { if (currentUser) setDoc(userDocRef(), { tasks },    { merge: true }); }
+function saveSubjects() { if (currentUser) setDoc(userDocRef(), { subjects }, { merge: true }); }
+function saveEvents()   { if (currentUser) setDoc(userDocRef(), { events },   { merge: true }); }
+function saveColumns()  { if (currentUser) setDoc(userDocRef(), { columns },  { merge: true }); }
 function getSettings()  { return JSON.parse(localStorage.getItem('hw-settings') || 'null') || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } }; }
-function saveSettings(s){ localStorage.setItem('hw-settings', JSON.stringify(s)); }
+function saveSettings(s){ localStorage.setItem('hw-settings', JSON.stringify(s)); if (currentUser) setDoc(userDocRef(), { settings: s }, { merge: true }); }
 
 // ── Helpers ───────────────────────────────────────────────
 function genId()   { return Math.random().toString(36).slice(2, 10); }
@@ -127,7 +135,6 @@ function applyTheme(t) {
   localStorage.setItem('hw-theme', t);
 }
 document.getElementById('themeToggle').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
-applyTheme(theme);
 
 // ── View Switching ────────────────────────────────────────
 function showView(v) {
@@ -165,7 +172,7 @@ function renderBoard() {
     const initial  = col.label.charAt(0).toUpperCase();
     return `
       <div class="board-column" data-col="${col.id}">
-        <div class="column-header">
+        <div class="column-header" style="--col-accent:${col.color}">
           <div class="column-title-row">
             <span class="day-pill" style="background:${col.color}">${escHtml(initial)}</span>
             <h2 class="column-title">${escHtml(col.label)}</h2>
@@ -1638,14 +1645,135 @@ function openColumnColorPicker(colId, swatchBtn) {
   input.click();
 }
 
-// ── Init ──────────────────────────────────────────────────
-applyStyle();
-saveSubjects();
-saveColumns();
-populateSubjectDropdown();
-populateColumnDropdowns();
-// Apply dev mode badge on load
-const _initSettings = getSettings();
-document.getElementById('devBadge').classList.toggle('hidden', !_initSettings.devMode);
-document.getElementById('btnStats').classList.toggle('hidden',  !_initSettings.devMode);
-renderBoard();
+// ── Firebase Auth + Init ──────────────────────────────────
+function mergeSubjects(raw) {
+  return raw.map(s => {
+    const def = DEFAULT_SUBJECTS.find(d => d.id === s.id);
+    return { priority: 3, ...(def || {}), ...s, day: s.day || (def ? def.day : 'a') };
+  });
+}
+
+async function loadUserData() {
+  const ref  = doc(db, 'users', currentUser.uid);
+  const snap = await getDoc(ref);
+
+  if (snap.exists()) {
+    const d = snap.data();
+    if (d.columns)  columns  = d.columns;
+    if (d.subjects) subjects = mergeSubjects(d.subjects);
+    if (d.tasks)    tasks    = d.tasks;
+    if (d.events)   events   = d.events;
+    if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
+  } else {
+    // First sign-in — migrate any existing localStorage data, then save to cloud
+    const lsTasks    = JSON.parse(localStorage.getItem('hw-tasks')    || '[]');
+    const lsSubjects = JSON.parse(localStorage.getItem('hw-subjects') || 'null');
+    const lsColumns  = JSON.parse(localStorage.getItem('hw-columns')  || 'null');
+    const lsEvents   = JSON.parse(localStorage.getItem('hw-events')   || '[]');
+    const lsSettings = JSON.parse(localStorage.getItem('hw-settings') || 'null');
+    if (lsTasks.length || lsSubjects || lsColumns) {
+      tasks   = lsTasks;
+      if (lsSubjects) subjects = mergeSubjects(lsSubjects);
+      if (lsColumns)  columns  = lsColumns;
+      events  = lsEvents;
+    }
+    await setDoc(ref, {
+      tasks, subjects, columns, events,
+      settings: lsSettings || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } },
+    });
+  }
+}
+
+function initApp() {
+  applyStyle();
+  applyTheme(theme);
+  saveSubjects();
+  saveColumns();
+  populateSubjectDropdown();
+  populateColumnDropdowns();
+  const s = getSettings();
+  document.getElementById('devBadge').classList.toggle('hidden', !s.devMode);
+  document.getElementById('btnStats').classList.toggle('hidden',  !s.devMode);
+  renderBoard();
+}
+
+// ── Sign-out button ───────────────────────────────────────
+document.getElementById('signOutBtn').addEventListener('click', () => signOut(auth));
+
+// ── Login screen logic ────────────────────────────────────
+const loginOverlay  = document.getElementById('loginOverlay');
+const mainApp       = document.getElementById('mainApp');
+const loginError    = document.getElementById('loginError');
+const loginEmailSec = document.getElementById('loginEmailSection');
+const googleProvider = new GoogleAuthProvider();
+
+function showLoginError(msg) {
+  loginError.textContent = msg;
+  loginError.classList.remove('hidden');
+}
+function clearLoginError() { loginError.classList.add('hidden'); }
+
+document.getElementById('btnGoogleSignIn').addEventListener('click', async () => {
+  clearLoginError();
+  try { await signInWithPopup(auth, googleProvider); }
+  catch (e) { showLoginError('Google sign-in failed. Try again.'); }
+});
+
+document.getElementById('btnShowEmail').addEventListener('click', () => {
+  loginEmailSec.classList.toggle('hidden');
+  clearLoginError();
+});
+
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  clearLoginError();
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const isSignUp = document.getElementById('loginModeToggle').dataset.mode === 'signup';
+  try {
+    if (isSignUp) {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+  } catch (e) {
+    const msgs = {
+      'auth/user-not-found':   'No account found with that email.',
+      'auth/wrong-password':   'Wrong password. Try again.',
+      'auth/email-already-in-use': 'That email is already registered. Sign in instead.',
+      'auth/weak-password':    'Password must be at least 6 characters.',
+      'auth/invalid-email':    'Please enter a valid email address.',
+      'auth/invalid-credential': 'Wrong email or password.',
+    };
+    showLoginError(msgs[e.code] || 'Something went wrong. Try again.');
+  }
+});
+
+document.getElementById('loginModeToggle').addEventListener('click', e => {
+  const btn     = e.currentTarget;
+  const isSignUp = btn.dataset.mode !== 'signup';
+  btn.dataset.mode = isSignUp ? 'signup' : 'signin';
+  btn.textContent  = isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Create one";
+  document.getElementById('loginSubmitBtn').textContent = isSignUp ? 'Create Account' : 'Sign In';
+  clearLoginError();
+});
+
+// ── Auth state watcher (runs the whole app) ───────────────
+onAuthStateChanged(auth, async user => {
+  if (user) {
+    currentUser = user;
+    await loadUserData();
+    loginOverlay.classList.add('hidden');
+    mainApp.classList.remove('hidden');
+    initApp();
+  } else {
+    currentUser = null;
+    mainApp.classList.add('hidden');
+    loginOverlay.classList.remove('hidden');
+    // reset state so next user starts fresh
+    columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
+    subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
+    tasks    = [];
+    events   = [];
+  }
+});
