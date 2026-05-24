@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Milanote 2.0</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234F46E5'/><text y='.9em' font-size='75' x='12'>📚</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo">📚</span>
+      <h1>Milanote 2.0</h1>
+    </div>
+
+    <nav class="view-nav">
+      <button class="view-tab active" id="btnBoard">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="4" height="12" rx="1.5" fill="currentColor"/><rect x="7" y="1" width="4" height="8" rx="1.5" fill="currentColor"/></svg>
+        Board
+      </button>
+      <button class="view-tab" id="btnCalendar">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v3M9 1v3M1 6.5h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Calendar
+      </button>
+      <button class="view-tab" id="btnPlan">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M7 4v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Plan
+      </button>
+    </nav>
+
+    <div class="header-right">
+      <span class="dev-badge hidden" id="devBadge">🔬 Dev</span>
+      <button class="icon-btn" id="themeToggle" title="Toggle dark / light mode">🌙</button>
+      <button class="icon-btn" id="openCustomize">🎨 Customize</button>
+      <button class="icon-btn" id="openSettings">⚙️ Settings</button>
+      <button class="icon-btn" id="openClasses">📋 Classes</button>
+    </div>
+  </header>
+
+  <!-- ── Board View ── -->
+  <div id="boardView" class="board-view">
+    <div class="board-columns" id="boardColumns"></div>
+  </div>
+
+  <!-- ── Calendar View ── -->
+  <div id="calendarView" class="calendar-view hidden">
+    <div class="cal-panel">
+      <div class="cal-top">
+        <div class="cal-nav">
+          <button class="cal-arrow" id="calPrev">&#8592;</button>
+          <h2 id="calTitle"></h2>
+          <button class="cal-arrow" id="calNext">&#8594;</button>
+        </div>
+        <div class="view-toggle">
+          <button class="toggle-btn active" id="btnMonthly">Monthly</button>
+          <button class="toggle-btn" id="btnWeekly">Weekly</button>
+        </div>
+        <button class="btn-add-event" id="openEvent">+ Add Event</button>
+      </div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+      <div id="dayDetail" class="day-detail hidden">
+        <div class="day-detail-header">
+          <span id="dayDetailTitle"></span>
+          <button id="closeDayDetail">✕</button>
+        </div>
+        <div id="dayDetailTasks"></div>
+      </div>
+    </div>
+    <div class="cal-sidebar">
+      <div class="cal-sidebar-inner">
+        <p class="cal-sidebar-heading">Legend</p>
+        <div id="calLegend" class="cal-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Plan View ── -->
+  <div id="planView" class="plan-view hidden">
+    <div class="plan-panel">
+      <div class="plan-top">
+        <div class="plan-title-area">
+          <h2>Study Plan</h2>
+          <p class="plan-subtitle">Do these in order to finish everything on time.</p>
+        </div>
+        <div class="plan-sub-tabs">
+          <button class="toggle-btn active" id="btnRanked">Priority List</button>
+          <button class="toggle-btn" id="btnSchedule">Daily Schedule</button>
+          <button class="toggle-btn dev-only hidden" id="btnStats">📊 Stats</button>
+        </div>
+      </div>
+      <div id="planContent" class="plan-content"></div>
+    </div>
+  </div>
+
+  <!-- ── Add Task Modal ── -->
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Add a Task</h3>
+        <button class="modal-close" id="closeModal">✕</button>
+      </div>
+      <form id="taskForm" class="task-form">
+        <div class="form-group">
+          <label for="taskName">What's the task?</label>
+          <input type="text" id="taskName" placeholder="e.g. Chapter 5 worksheet" required />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskSubject">Which class?</label>
+            <select id="taskSubject" required></select>
+          </div>
+          <div class="form-group">
+            <label for="taskDue">Due date</label>
+            <input type="date" id="taskDue" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskEstimate">How long will it take?</label>
+            <select id="taskEstimate">
+              <option value="">Not sure</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="90">1.5 hours</option>
+              <option value="120">2 hours</option>
+              <option value="180">3 hours</option>
+              <option value="240">4+ hours</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>How hard is it?</label>
+            <div class="star-row" id="difficultyRow">
+              <button type="button" class="star-btn" data-val="1">★</button>
+              <button type="button" class="star-btn" data-val="2">★</button>
+              <button type="button" class="star-btn" data-val="3">★</button>
+              <button type="button" class="star-btn" data-val="4">★</button>
+              <button type="button" class="star-btn" data-val="5">★</button>
+              <input type="hidden" id="taskDifficulty" value="" />
+              <span class="star-hint" id="difficultyHint">Tap a star</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="taskNotes">Notes (optional)</label>
+          <input type="text" id="taskNotes" placeholder="Any extra details..." />
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelModal">Cancel</button>
+          <button type="submit" class="btn-save">Save Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Manage Classes Modal ── -->
+  <div class="modal-overlay hidden" id="classesOverlay">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>Manage Classes &amp; Columns</h3>
+        <button class="modal-close" id="closeClasses">✕</button>
+      </div>
+
+      <!-- Columns section -->
+      <div class="manage-section">
+        <h4 class="settings-heading">Columns</h4>
+        <p class="modal-hint">Your board columns — like A-Day, B-Day, or a club.</p>
+        <div id="columnsList" class="columns-manage-list"></div>
+        <div class="add-column-inline">
+          <input type="color" id="newColColorModal" value="#6366F1" class="color-picker" />
+          <input type="text" id="newColNameModal" placeholder="New column (e.g. C-Day, Theater…)" />
+          <button class="btn-save" id="addColumnModalBtn">Add Column</button>
+        </div>
+      </div>
+
+      <hr class="modal-divider" />
+
+      <!-- Classes section -->
+      <div class="manage-section">
+        <h4 class="settings-heading">Classes</h4>
+        <p class="modal-hint">Add, rename, recolour, set importance, or remove your classes.</p>
+        <div id="classesList" class="classes-list"></div>
+        <div class="add-class-form">
+          <h4>Add a new class</h4>
+          <div class="add-class-row">
+            <input type="color" id="newClassColor" value="#6366F1" class="color-picker" />
+            <input type="text" id="newClassName" placeholder="Class name (e.g. Physics)" />
+            <select id="newClassDay"></select>
+            <button class="btn-save" id="addClassBtn">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Add Event Modal ── -->
+  <div class="modal-overlay hidden" id="eventOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Add an Event</h3>
+        <button class="modal-close" id="closeEvent">✕</button>
+      </div>
+      <form id="eventForm" class="task-form">
+        <div class="form-group">
+          <label for="eventTitle">What's happening?</label>
+          <input type="text" id="eventTitle" placeholder="e.g. Theater rehearsal" required />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="eventDate">Date</label>
+            <input type="date" id="eventDate" required />
+          </div>
+          <div class="form-group">
+            <label for="eventCategory">Type</label>
+            <select id="eventCategory">
+              <option value="club">Club / Activity</option>
+              <option value="personal">Personal</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" id="clubGroup">
+          <label for="eventClub">Which club?</label>
+          <select id="eventClub">
+            <option value="theater">Theater</option>
+            <option value="ace">ACE</option>
+            <option value="sciolympiad">Science Olympiad</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="eventDuration">Duration (optional)</label>
+            <select id="eventDuration">
+              <option value="">Not sure</option>
+              <option value="30">30 min</option>
+              <option value="60">1 hour</option>
+              <option value="90">1.5 hours</option>
+              <option value="120">2 hours</option>
+              <option value="180">3 hours</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="eventNotes">Notes (optional)</label>
+            <input type="text" id="eventNotes" placeholder="Any details..." />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelEvent">Cancel</button>
+          <button type="submit" class="btn-save">Save Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Settings Modal ── -->
+  <div class="modal-overlay hidden" id="settingsOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="modal-close" id="closeSettings">✕</button>
+      </div>
+
+      <div class="settings-section">
+        <h4 class="settings-heading">Daily Study Hours</h4>
+        <p class="modal-hint">How many hours do you have for homework each day of the week?</p>
+        <div class="hours-grid">
+          <div class="hours-row"><label>Monday</label>    <input type="number" class="hours-input" data-day="mon" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Tuesday</label>   <input type="number" class="hours-input" data-day="tue" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Wednesday</label> <input type="number" class="hours-input" data-day="wed" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Thursday</label>  <input type="number" class="hours-input" data-day="thu" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Friday</label>    <input type="number" class="hours-input" data-day="fri" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Saturday</label>  <input type="number" class="hours-input" data-day="sat" min="0" max="12" step="0.5" /></div>
+          <div class="hours-row"><label>Sunday</label>    <input type="number" class="hours-input" data-day="sun" min="0" max="12" step="0.5" /></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4 class="settings-heading">Developer Mode</h4>
+        <p class="modal-hint">After finishing a task, log how long it actually took. Unlocks a Stats tab in the Plan view.</p>
+        <label class="toggle-switch">
+          <input type="checkbox" id="devModeToggle" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          <span>Enable Developer Mode</span>
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-cancel" id="cancelSettings">Cancel</button>
+        <button class="btn-save" id="saveSettingsBtn">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reflection Popup (Dev Mode) ── -->
+  <div class="modal-overlay hidden" id="reflectionOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Task Complete! 🎉</h3>
+        <button class="modal-close" id="closeReflection">✕</button>
+      </div>
+      <p class="reflection-name" id="reflectionTaskName"></p>
+      <form id="reflectionForm" class="task-form">
+        <div class="form-group">
+          <label for="actualMinsInput">How long did it actually take?</label>
+          <select id="actualMinsInput">
+            <option value="">Not sure / skip</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="45">45 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+            <option value="180">3 hours</option>
+            <option value="240">4+ hours</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="reflectionNotesInput">Any notes?</label>
+          <input type="text" id="reflectionNotesInput" placeholder="Was it harder than expected? Easier?" />
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="skipReflection">Skip</button>
+          <button type="submit" class="btn-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Customize Panel ── -->
+  <div class="customize-panel hidden" id="customizePanel">
+    <div class="customize-panel-hd">
+      <span>🎨 Customize</span>
+      <button class="customize-close" id="closeCustomizePanel">✕</button>
+    </div>
+
+    <!-- Background -->
+    <div class="customize-section">
+      <div class="customize-section-label">Background</div>
+      <div class="customize-tabs" id="bgTabs">
+        <button class="customize-tab active" data-tab="color">Color</button>
+        <button class="customize-tab" data-tab="gradient">Gradient</button>
+        <button class="customize-tab" data-tab="image">Image</button>
+      </div>
+      <div class="customize-tab-body" id="bgTabColor">
+        <div class="customize-color-row">
+          <input type="color" id="bgColorPicker" value="#ede8df" class="customize-color-input" />
+          <span class="customize-hint">Pick any color</span>
+        </div>
+      </div>
+      <div class="customize-tab-body hidden" id="bgTabGradient">
+        <div class="customize-gradient-grid" id="gradientSwatches"></div>
+      </div>
+      <div class="customize-tab-body hidden" id="bgTabImage">
+        <input type="text" class="customize-img-url" id="bgImageUrl" placeholder="Paste an image URL…" />
+        <div class="customize-or">— or —</div>
+        <label class="customize-upload-label">
+          📁 Upload from computer
+          <input type="file" id="bgImageUpload" accept="image/*" />
+        </label>
+      </div>
+      <button class="customize-reset" id="bgReset">↩ Reset background</button>
+    </div>
+
+    <!-- Font -->
+    <div class="customize-section">
+      <div class="customize-section-label">Font</div>
+      <div class="customize-font-grid" id="fontPicker">
+        <button class="customize-font-pill active" data-font="Inter" style="font-family:'Inter'">Inter</button>
+        <button class="customize-font-pill" data-font="Poppins" style="font-family:'Poppins'">Poppins</button>
+        <button class="customize-font-pill" data-font="Merriweather" style="font-family:'Merriweather'">Merriweather</button>
+        <button class="customize-font-pill" data-font="Space Mono" style="font-family:'Space Mono'">Mono</button>
+      </div>
+    </div>
+
+    <!-- Title & Emoji -->
+    <div class="customize-section">
+      <div class="customize-section-label">Board Title &amp; Icon</div>
+      <div class="customize-title-row">
+        <input type="text" id="customizeEmoji" class="customize-emoji-input" maxlength="2" placeholder="📚" />
+        <input type="text" id="customizeTitleInput" class="customize-title-input" placeholder="Milanote 2.0" />
+      </div>
+      <button class="customize-reset" id="titleReset">↩ Reset title</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
