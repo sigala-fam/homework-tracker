@@ -23,16 +23,8 @@ const db    = getFirestore(fbApp);
 let currentUser = null;
 
 // ── Default Subjects ─────────────────────────────────────
-const DEFAULT_SUBJECTS = [
-  { id: 'chem',    label: 'Chemistry',             color: '#14B8A6', day: 'a', priority: 3 },
-  { id: 'geo',     label: 'Geometry',              color: '#8B5CF6', day: 'a', priority: 3 },
-  { id: 'history', label: 'History',               color: '#EF4444', day: 'a', priority: 3 },
-  { id: 'english', label: 'English',               color: '#EC4899', day: 'a', priority: 3 },
-  { id: 'algebra', label: 'Algebra',               color: '#3B82F6', day: 'b', priority: 3 },
-  { id: 'eng1',    label: 'Engineering 1',         color: '#F97316', day: 'b', priority: 3 },
-  { id: 'apcs',    label: 'AP Computer Science A', color: '#22C55E', day: 'b', priority: 3 },
-  { id: 'eng2',    label: 'Engineering 2',         color: '#EA580C', day: 'b', priority: 3 },
-];
+// New users start with no classes — they add their own via the 📋 Classes button
+const DEFAULT_SUBJECTS = [];
 
 const DEFAULT_SETTINGS = {
   dailyHours: { mon: 2, tue: 2, wed: 2, thu: 2, fri: 2, sat: 3, sun: 3 },
@@ -223,7 +215,7 @@ function renderColumnTasks(colId) {
   const daySubs = subjects.filter(s => s.day === colId);
 
   if (!daySubs.length) {
-    container.innerHTML = `<p class="group-empty" style="padding:16px">No classes in this column yet.<br>Use 📋 Classes to assign some.</p>`;
+    container.innerHTML = `<p class="group-empty" style="padding:16px 13px">No classes here yet!<br>Tap <strong>📋 Classes</strong> in the top right to add yours.</p>`;
     return;
   }
 
