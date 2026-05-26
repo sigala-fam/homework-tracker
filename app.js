@@ -130,6 +130,38 @@ function applyTheme(t) {
 }
 document.getElementById('themeToggle').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
 
+// ── Status Line ───────────────────────────────────────────
+function renderStatusLine() {
+  const el = document.getElementById('statusLine');
+  if (!el) return;
+
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const startOfWeek = new Date(now);
+  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+  const weekTasks = tasks.filter(t => {
+    if (!t.due) return false;
+    const d = new Date(t.due + 'T00:00:00');
+    return d >= startOfWeek && d < endOfWeek;
+  });
+  const overdueTasks = tasks.filter(t => t.due && !t.done && daysUntil(t.due) < 0);
+
+  let html = `<span class="status-item">${greeting}</span>`;
+  html += `<span class="status-dot"></span>`;
+  html += `<span class="status-item"><strong>${weekTasks.length}</strong>&nbsp;tasks this week</span>`;
+  if (overdueTasks.length > 0) {
+    html += `<span class="status-dot"></span>`;
+    html += `<span class="status-item warn"><strong>${overdueTasks.length}</strong>&nbsp;overdue</span>`;
+  }
+  el.innerHTML = html;
+}
+
 // ── View Switching ────────────────────────────────────────
 function showView(v) {
   activeView = v;
@@ -208,6 +240,7 @@ function renderBoard() {
     btn.addEventListener('click', () => deleteColumn(btn.dataset.id))
   );
   document.getElementById('addColumnBtn').addEventListener('click', showAddColumnForm);
+  renderStatusLine();
 }
 
 function renderColumnTasks(colId) {
