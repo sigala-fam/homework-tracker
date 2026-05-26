@@ -76,11 +76,51 @@
 
     <div class="header-right">
       <span class="dev-badge hidden" id="devBadge">🔬 Dev</span>
-      <button class="icon-btn" id="themeToggle" title="Toggle dark / light mode">🌙</button>
-      <button class="icon-btn" id="openCustomize" title="Customize">🎨</button>
-      <button class="icon-btn" id="openSettings" title="Settings">⚙️</button>
-      <button class="icon-btn" id="openClasses" title="Classes">📋</button>
-      <button class="icon-btn sign-out-btn" id="signOutBtn" title="Sign out">🚪</button>
+
+      <!-- Hidden originals keep existing JS listeners working -->
+      <button class="icon-btn" id="themeToggle" style="display:none">🌙</button>
+      <button class="icon-btn" id="openCustomize" style="display:none">🎨</button>
+      <button class="icon-btn" id="openSettings" style="display:none">⚙️</button>
+      <button class="icon-btn" id="openClasses" style="display:none">📋</button>
+      <button class="icon-btn sign-out-btn" id="signOutBtn" style="display:none">🚪</button>
+
+      <!-- New single profile button -->
+      <div class="profile-menu-wrap" id="profileMenuWrap">
+        <button class="profile-avatar-btn" id="profileAvatarBtn" title="Profile &amp; Settings">
+          <img id="profileAvatarImg" alt="avatar" />
+          <span id="profileAvatarInitial">?</span>
+        </button>
+
+        <div class="profile-dropdown hidden" id="profileDropdown">
+          <!-- Top: photo + name -->
+          <div class="profile-top">
+            <label class="profile-photo-label" title="Click to upload a photo">
+              <img id="dropdownAvatarImg" alt="avatar" />
+              <span id="dropdownAvatarInitial">?</span>
+              <input type="file" id="profilePhotoInput" accept="image/*" />
+            </label>
+            <div class="profile-info">
+              <span class="profile-name" id="profileDisplayName">Loading…</span>
+              <button class="profile-edit-name-btn" id="editNameBtn">✏️ Edit name</button>
+            </div>
+          </div>
+
+          <!-- Greeting -->
+          <div class="profile-greeting" id="profileGreeting"></div>
+
+          <div class="profile-divider"></div>
+
+          <!-- Actions -->
+          <button class="profile-menu-item" id="ddThemeToggle">🌙 Toggle Theme</button>
+          <button class="profile-menu-item" id="ddOpenCustomize">🎨 Customize</button>
+          <button class="profile-menu-item" id="ddOpenSettings">⚙️ Settings</button>
+          <button class="profile-menu-item" id="ddOpenClasses">📋 Classes</button>
+
+          <div class="profile-divider"></div>
+
+          <button class="profile-menu-item sign-out-item" id="ddSignOut">🚪 Sign Out</button>
+        </div>
+      </div>
     </div>
   </header>
 

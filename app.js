@@ -1,6 +1,6 @@
 // ── Firebase ──────────────────────────────────────────────
 import { initializeApp }                                         from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signOut,
+import { getAuth, onAuthStateChanged, signOut, updateProfile,
          signInWithPopup, signInWithRedirect, getRedirectResult,
          GoogleAuthProvider,
          signInWithEmailAndPassword,
@@ -129,6 +129,120 @@ function applyTheme(t) {
   localStorage.setItem('hw-theme', t);
 }
 document.getElementById('themeToggle').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
+
+// ── Profile Menu ──────────────────────────────────────────
+function getInitials(name) {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).map(w => w[0].toUpperCase()).slice(0, 2).join('');
+}
+
+function setAvatarPhoto(url) {
+  const btnImg  = document.getElementById('profileAvatarImg');
+  const ddImg   = document.getElementById('dropdownAvatarImg');
+  const btnWrap = document.getElementById('profileAvatarBtn');
+  const ddWrap  = document.querySelector('.profile-photo-label');
+  if (url) {
+    btnImg.src = url; ddImg.src = url;
+    btnWrap.classList.add('has-photo');
+    ddWrap.classList.add('has-photo');
+  } else {
+    btnImg.removeAttribute('src'); ddImg.removeAttribute('src');
+    btnWrap.classList.remove('has-photo');
+    ddWrap.classList.remove('has-photo');
+  }
+}
+
+function renderProfileInfo() {
+  if (!currentUser) return;
+  const name = currentUser.displayName || currentUser.email || 'You';
+  const initials = getInitials(name);
+  document.getElementById('profileAvatarInitial').textContent = initials;
+  document.getElementById('dropdownAvatarInitial').textContent = initials;
+  document.getElementById('profileDisplayName').textContent = name;
+  const saved = localStorage.getItem('profilePhoto_' + currentUser.uid);
+  setAvatarPhoto(saved || currentUser.photoURL || null);
+}
+
+function renderProfileGreeting() {
+  const el = document.getElementById('profileGreeting');
+  if (!el) return;
+  const remaining = tasks.filter(t => !t.done).length;
+  const name = currentUser?.displayName?.split(' ')[0] || 'there';
+  const taskWord = remaining === 1 ? 'task' : 'tasks';
+  el.innerHTML = remaining > 0
+    ? `👋 Hello <strong>${name}</strong>! You have <strong>${remaining} ${taskWord}</strong> left to complete.`
+    : `👋 Hello <strong>${name}</strong>! You're all caught up — nice work! 🎉`;
+}
+
+function openProfileDropdown() {
+  renderProfileGreeting();
+  document.getElementById('profileDropdown').classList.remove('hidden');
+}
+function closeProfileDropdown() {
+  document.getElementById('profileDropdown').classList.add('hidden');
+}
+
+document.getElementById('profileAvatarBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const dd = document.getElementById('profileDropdown');
+  if (dd.classList.contains('hidden')) openProfileDropdown();
+  else closeProfileDropdown();
+});
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('profileMenuWrap').contains(e.target)) {
+    closeProfileDropdown();
+  }
+});
+
+// Dropdown menu items → delegate to hidden originals
+document.getElementById('ddThemeToggle').addEventListener('click', () => {
+  document.getElementById('themeToggle').click();
+  closeProfileDropdown();
+});
+document.getElementById('ddOpenCustomize').addEventListener('click', () => {
+  document.getElementById('openCustomize').click();
+  closeProfileDropdown();
+});
+document.getElementById('ddOpenSettings').addEventListener('click', () => {
+  document.getElementById('openSettings').click();
+  closeProfileDropdown();
+});
+document.getElementById('ddOpenClasses').addEventListener('click', () => {
+  document.getElementById('openClasses').click();
+  closeProfileDropdown();
+});
+document.getElementById('ddSignOut').addEventListener('click', () => {
+  document.getElementById('signOutBtn').click();
+  closeProfileDropdown();
+});
+
+// Profile photo upload
+document.getElementById('profilePhotoInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file || !currentUser) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const url = ev.target.result;
+    localStorage.setItem('profilePhoto_' + currentUser.uid, url);
+    setAvatarPhoto(url);
+  };
+  reader.readAsDataURL(file);
+});
+
+// Edit display name
+document.getElementById('editNameBtn').addEventListener('click', async () => {
+  const current = currentUser?.displayName || '';
+  const newName = prompt('Enter your name:', current);
+  if (!newName || newName.trim() === current) return;
+  try {
+    await updateProfile(currentUser, { displayName: newName.trim() });
+    renderProfileInfo();
+    renderProfileGreeting();
+  } catch (err) {
+    alert('Could not update name. Try again.');
+  }
+});
 
 // ── Status Line ───────────────────────────────────────────
 function renderStatusLine() {
@@ -1721,6 +1835,7 @@ function initApp() {
   const s = getSettings();
   document.getElementById('devBadge').classList.toggle('hidden', !s.devMode);
   document.getElementById('btnStats').classList.toggle('hidden',  !s.devMode);
+  renderProfileInfo();
   renderBoard();
 }
 
