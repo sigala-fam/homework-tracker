@@ -1715,12 +1715,31 @@ function getStyle() {
 }
 function saveStyle(s) { localStorage.setItem('hw-style', JSON.stringify(s)); }
 
+function detectBgBrightness(bg) {
+  if (!bg) return null;
+  if (bg.startsWith('url(')) return 'image';
+  const hex = bg.match(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h.split('').map(c => c+c).join('');
+    const r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);
+    return (0.299*r + 0.587*g + 0.114*b) > 140 ? 'light' : 'dark';
+  }
+  const rgb = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgb) {
+    const [,r,g,b] = rgb.map(Number);
+    return (0.299*r + 0.587*g + 0.114*b) > 140 ? 'light' : 'dark';
+  }
+  return 'dark';
+}
+
 function applyBg(bg) {
   if (!bg) {
     document.body.style.background = '';
     document.body.style.backgroundSize = '';
     document.body.style.backgroundPosition = '';
     document.body.style.backgroundAttachment = '';
+    document.body.removeAttribute('data-bg');
     return;
   }
   if (bg.startsWith('url(')) {
@@ -1734,6 +1753,7 @@ function applyBg(bg) {
     document.body.style.backgroundPosition = '';
     document.body.style.backgroundAttachment = '';
   }
+  document.body.setAttribute('data-bg', detectBgBrightness(bg));
 }
 
 function applyStyle() {
