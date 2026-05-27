@@ -431,6 +431,17 @@ function showInlineAdd(subjId) {
     <input class="inline-add-name" type="text" placeholder="Task name…" autocomplete="off" />
     <div class="inline-add-meta">
       <input class="inline-add-date" type="date" value="${todayStr()}" />
+      <select class="inline-add-est">
+        <option value="">How long?</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="45">45 min</option>
+        <option value="60">1 hour</option>
+        <option value="90">1.5 hours</option>
+        <option value="120">2 hours</option>
+        <option value="180">3 hours</option>
+        <option value="240">4+ hours</option>
+      </select>
     </div>
     <div class="inline-add-extras">
       <div class="inline-add-stars-row">
@@ -455,6 +466,7 @@ function showInlineAdd(subjId) {
 
   const nameInput  = form.querySelector('.inline-add-name');
   const dateInput  = form.querySelector('.inline-add-date');
+  const estInput   = form.querySelector('.inline-add-est');
   const notesInput = form.querySelector('.inline-add-notes');
   const starBtns   = form.querySelectorAll('.inline-star');
   const starHint   = form.querySelector('.inline-star-hint');
@@ -480,7 +492,8 @@ function showInlineAdd(subjId) {
   function save() {
     const name = nameInput.value.trim();
     if (!name) { cancel(); return; }
-    addTask(name, subjId, dateInput.value || null, notesInput.value.trim(), null, difficulty);
+    const est = parseInt(estInput.value) || null;
+    addTask(name, subjId, dateInput.value || null, notesInput.value.trim(), est, difficulty);
   }
   function cancel() { renderColumnTasks(subj.day); }
 

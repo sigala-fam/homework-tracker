@@ -315,7 +315,7 @@ body {
 .board-view {
   height: calc(100vh - 84px);
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: clip;
   padding: 20px;
 }
 .board-columns {
@@ -625,13 +625,27 @@ body {
 .inline-add-name:focus { outline: none; }
 .inline-add-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .inline-add-date {
-  padding: 4px 8px;
-  border: 1px solid var(--border); border-radius: 6px;
-  font-size: 12px;
+  padding: 5px 10px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  font-size: 12px; font-weight: 500;
   background: var(--surface); color: var(--text);
   font-family: inherit; cursor: pointer;
 }
 .inline-add-date:focus { outline: none; border-color: var(--accent); }
+.inline-add-date::-webkit-calendar-picker-indicator {
+  cursor: pointer; opacity: 0.7;
+}
+[data-theme="dark"] .inline-add-date::-webkit-calendar-picker-indicator {
+  filter: invert(1); opacity: 0.8;
+}
+.inline-add-est {
+  padding: 5px 8px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  font-size: 12px; font-weight: 500;
+  background: var(--surface); color: var(--text);
+  font-family: inherit; cursor: pointer;
+}
+.inline-add-est:focus { outline: none; border-color: var(--accent); }
 .inline-add-hint { font-size: 11px; color: var(--muted); }
 
 .card-due-empty { color: var(--muted); font-style: italic; font-size: 11px; }
