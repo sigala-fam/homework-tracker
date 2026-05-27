@@ -74,7 +74,6 @@ body {
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 0 20px;
   height: 52px;
@@ -132,7 +131,7 @@ body {
 }
 .view-tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 
-.header-right { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.header-right { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto; }
 
 .dev-badge {
   background: #7C3AED;

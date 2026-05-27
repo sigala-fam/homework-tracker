@@ -252,6 +252,8 @@ function renderStatusLine() {
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = currentUser?.displayName?.split(' ')[0] || '';
+  const greetingText = firstName ? `${greeting}, ${firstName}` : greeting;
 
   const startOfWeek = new Date(now);
   startOfWeek.setHours(0, 0, 0, 0);
@@ -266,7 +268,7 @@ function renderStatusLine() {
   });
   const overdueTasks = tasks.filter(t => t.due && !t.done && daysUntil(t.due) < 0);
 
-  let html = `<span class="status-item">${greeting}</span>`;
+  let html = `<span class="status-item">${greetingText}</span>`;
   html += `<span class="status-dot"></span>`;
   html += `<span class="status-item"><strong>${weekTasks.length}</strong>&nbsp;tasks this week</span>`;
   if (overdueTasks.length > 0) {
