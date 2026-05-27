@@ -1,0 +1,21 @@
+{
+  "name": "homework-tracker",
+  "version": "1.0.0",
+  "description": "A personal homework and study planner built as a web app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'No build step required for vanilla HTML app'"
+  },
+  "keywords": [
+    "homework",
+    "tracker",
+    "planner"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/analytics": "^1.4.1"
+  }
+}
