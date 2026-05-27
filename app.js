@@ -956,13 +956,14 @@ function renderDailySchedule() {
     const freeLeft = Math.max(0, hoursAvail*60 - totalMins - eventMins);
 
     const evHtml = dayEvs.map(e => {
-      const color = e.category === 'club' ? (CLUBS[e.club]?.color || '#6B7280') : PERSONAL_COLOR;
-      const label = e.category === 'club' ? (CLUBS[e.club]?.label || 'Club') : 'Personal';
+      const color = eventColor(e);
+      const label = eventLabel(e);
       return `
         <div class="schedule-task" style="--subject-color:${color}">
           <div class="schedule-task-name">${escHtml(e.title)}</div>
           <div class="schedule-task-meta">
             <span class="schedule-task-subject" style="background:${color}">${label}</span>
+            ${e.startTime ? `<span class="schedule-task-time">🕐 ${fmtTime(e.startTime)}</span>` : ''}
             ${e.durationMins ? `<span class="schedule-task-time">⏱ ${fmtMins(e.durationMins)}</span>` : ''}
           </div>
         </div>`;
@@ -1121,13 +1122,15 @@ function renderLegend() {
       `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div><span>${escHtml(s.label)}</span></div>`
     ).join('');
   }
-  const clubsUsed = [...new Set(events.filter(e => e.category === 'club').map(e => e.club))];
+  const clubMap = {};
+  events.filter(e => e.category === 'club' && e.club).forEach(e => {
+    if (!clubMap[e.club]) clubMap[e.club] = eventColor(e);
+  });
   const hasPersonal = events.some(e => e.category === 'personal');
-  if (clubsUsed.length || hasPersonal) {
+  if (Object.keys(clubMap).length || hasPersonal) {
     html += `<div class="legend-section-label">Events</div>`;
-    clubsUsed.forEach(clubKey => {
-      const info = CLUBS[clubKey] || { label: clubKey, color: '#6B7280' };
-      html += `<div class="legend-item"><div class="legend-dot" style="background:${info.color}"></div><span>${escHtml(info.label)}</span></div>`;
+    Object.entries(clubMap).forEach(([name, color]) => {
+      html += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div><span>${escHtml(name)}</span></div>`;
     });
     if (hasPersonal) {
       html += `<div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>`;
@@ -1158,7 +1161,7 @@ function renderMonthly() {
           name: t.name, color: sMap[t.subject]?.color || '#aaa',
         }));
         const eventItems = (evMap[date]||[]).map(e => ({
-          name: e.title, color: e.category === 'club' ? (CLUBS[e.club]?.color || '#6B7280') : PERSONAL_COLOR,
+          name: e.title, color: eventColor(e),
         }));
         const items = [...taskItems, ...eventItems];
 
@@ -1221,9 +1224,8 @@ function renderWeekly() {
 
     const clubHtml = clubEvs.length
       ? clubEvs.map(e => {
-          const c = CLUBS[e.club] || CLUBS.other;
           return `<div class="weekly-item">
-            <div class="weekly-item-dot" style="background:${c.color}"></div>
+            <div class="weekly-item-dot" style="background:${eventColor(e)}"></div>
             <span class="weekly-item-name" title="${escHtml(e.title)}">${escHtml(e.title)}</span>
           </div>`;
         }).join('')
@@ -1293,11 +1295,12 @@ function showDayDetail(dateStr) {
   }).join('');
 
   const eventHtml = de.map(e => {
-    const color     = e.category === 'club' ? (CLUBS[e.club]?.color || '#6B7280') : PERSONAL_COLOR;
-    const typeLabel = e.category === 'club' ? (CLUBS[e.club]?.label || 'Club') : 'Personal';
+    const color     = eventColor(e);
+    const typeLabel = eventLabel(e);
 
     const meta = [];
     meta.push(`<span class="detail-badge event-badge" style="background:${color}">${escHtml(typeLabel)}</span>`);
+    if (e.startTime) meta.push(`<span class="detail-badge">🕐 ${fmtTime(e.startTime)}</span>`);
     if (e.durationMins) meta.push(`<span class="detail-badge">⏱ ${e.durationMins >= 60 ? (e.durationMins/60 % 1 === 0 ? e.durationMins/60 + 'h' : (e.durationMins/60).toFixed(1) + 'h') : e.durationMins + ' min'}</span>`);
 
     return `
@@ -1559,6 +1562,15 @@ document.getElementById('addClassBtn').addEventListener('click', () => {
 });
 document.getElementById('newClassName').addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('addClassBtn').click(); });
 
+function eventColor(e) { return e.color || (e.category === 'club' ? '#8B5CF6' : PERSONAL_COLOR); }
+function eventLabel(e) { return e.category === 'club' ? (e.club || 'Club') : 'Personal'; }
+function fmtTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'pm' : 'am';
+  return `${h % 12 || 12}:${String(m).padStart(2,'0')}${ampm}`;
+}
+
 // ── Add Event Modal ───────────────────────────────────────
 function openEvent(prefillDate) {
   document.getElementById('eventDate').value = prefillDate || todayStr();
@@ -1570,6 +1582,7 @@ function closeEvent() {
   document.getElementById('eventOverlay').classList.add('hidden');
   document.getElementById('eventForm').reset();
   document.getElementById('clubGroup').classList.remove('hidden');
+  document.getElementById('eventClubColor').value = '#8B5CF6';
   const customInput = document.getElementById('eventDurationCustom');
   customInput.classList.add('hidden');
   document.getElementById('eventDurationHours').value = '';
@@ -1599,18 +1612,20 @@ document.getElementById('eventDuration').addEventListener('change', e => {
 
 document.getElementById('eventForm').addEventListener('submit', e => {
   e.preventDefault();
-  const title    = document.getElementById('eventTitle').value.trim();
-  const date     = document.getElementById('eventDate').value;
-  const category = document.getElementById('eventCategory').value;
-  const club     = category === 'club' ? document.getElementById('eventClub').value : null;
-  const durSel   = document.getElementById('eventDuration').value;
-  const duration = durSel === 'custom'
+  const title     = document.getElementById('eventTitle').value.trim();
+  const date      = document.getElementById('eventDate').value;
+  const startTime = document.getElementById('eventTime').value || null;
+  const category  = document.getElementById('eventCategory').value;
+  const club      = category === 'club' ? document.getElementById('eventClub').value.trim() : null;
+  const color     = category === 'club' ? document.getElementById('eventClubColor').value : PERSONAL_COLOR;
+  const durSel    = document.getElementById('eventDuration').value;
+  const duration  = durSel === 'custom'
     ? (((parseInt(document.getElementById('eventDurationHours').value) || 0) * 60 +
         (parseInt(document.getElementById('eventDurationMins').value)  || 0)) || null)
     : (parseInt(durSel) || null);
-  const notes    = document.getElementById('eventNotes').value.trim();
+  const notes     = document.getElementById('eventNotes').value.trim();
   if (!title || !date) return;
-  events.push({ id: genId(), title, date, category, club, durationMins: duration, notes });
+  events.push({ id: genId(), title, date, startTime, category, club, color, durationMins: duration, notes });
   saveEvents();
   closeEvent();
   if (activeView === 'calendar') renderCalendar();
