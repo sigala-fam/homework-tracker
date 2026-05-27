@@ -60,6 +60,7 @@ let calView     = 'monthly';
 let calDate     = new Date();
 let selectedDay = null;
 let editingClassId  = null;
+let editingEventId  = null;
 let prefilterDay    = null;
 let pendingReflectId  = null;  // task id waiting for reflection
 const expandedSubtasks = new Set(); // task IDs with checklist panel open
@@ -1304,12 +1305,16 @@ function showDayDetail(dateStr) {
     if (e.durationMins) meta.push(`<span class="detail-badge">⏱ ${e.durationMins >= 60 ? (e.durationMins/60 % 1 === 0 ? e.durationMins/60 + 'h' : (e.durationMins/60).toFixed(1) + 'h') : e.durationMins + ' min'}</span>`);
 
     return `
-      <div class="detail-card">
+      <div class="detail-card" data-event-id="${e.id}">
         <div class="detail-color-bar" style="background:${color}"></div>
         <div class="detail-card-body">
           <div class="detail-card-title">${escHtml(e.title)}</div>
           <div class="detail-card-meta">${meta.join('')}</div>
           ${e.notes ? `<div class="detail-card-notes">${escHtml(e.notes)}</div>` : ''}
+        </div>
+        <div class="detail-event-actions">
+          <button class="detail-event-btn edit-event-btn" data-id="${e.id}" title="Edit">✏️</button>
+          <button class="detail-event-btn danger delete-event-btn" data-id="${e.id}" title="Delete">🗑</button>
         </div>
       </div>`;
   }).join('');
@@ -1318,6 +1323,59 @@ function showDayDetail(dateStr) {
   document.getElementById('dayDetailTasks').innerHTML = (taskHtml + eventHtml) ||
     `<div class="detail-empty">Nothing on this day.</div>`;
   document.getElementById('dayDetail').classList.remove('hidden');
+
+  document.querySelectorAll('.edit-event-btn').forEach(btn =>
+    btn.addEventListener('click', () => openEditEvent(btn.dataset.id))
+  );
+  document.querySelectorAll('.delete-event-btn').forEach(btn =>
+    btn.addEventListener('click', () => deleteEvent(btn.dataset.id))
+  );
+}
+
+function deleteEvent(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  if (!confirm(`Delete "${ev.title}"?`)) return;
+  events = events.filter(e => e.id !== id);
+  saveEvents();
+  renderCalendar();
+  if (selectedDay) showDayDetail(selectedDay);
+}
+
+function openEditEvent(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  editingEventId = id;
+  document.getElementById('eventTitle').value    = ev.title;
+  document.getElementById('eventDate').value     = ev.date;
+  document.getElementById('eventTime').value     = ev.startTime || '';
+  document.getElementById('eventCategory').value = ev.category;
+  document.getElementById('eventNotes').value    = ev.notes || '';
+
+  const clubGroup = document.getElementById('clubGroup');
+  if (ev.category === 'club') {
+    clubGroup.classList.remove('hidden');
+    document.getElementById('eventClub').value      = ev.club || '';
+    document.getElementById('eventClubColor').value = ev.color || '#8B5CF6';
+  } else {
+    clubGroup.classList.add('hidden');
+  }
+
+  const durSel = document.getElementById('eventDuration');
+  const knownVals = ['','30','60','90','120','180'];
+  if (ev.durationMins && !knownVals.includes(String(ev.durationMins))) {
+    durSel.value = 'custom';
+    document.getElementById('eventDurationCustom').classList.remove('hidden');
+    document.getElementById('eventDurationHours').value = Math.floor(ev.durationMins / 60);
+    document.getElementById('eventDurationMins').value  = ev.durationMins % 60;
+  } else {
+    durSel.value = ev.durationMins ? String(ev.durationMins) : '';
+    document.getElementById('eventDurationCustom').classList.add('hidden');
+  }
+
+  document.querySelector('#eventOverlay .modal-header h3').textContent = 'Edit Event';
+  document.getElementById('eventOverlay').classList.remove('hidden');
+  document.getElementById('eventTitle').focus();
 }
 
 function calNav(dir) {
@@ -1579,7 +1637,9 @@ function openEvent(prefillDate) {
   document.getElementById('eventTitle').focus();
 }
 function closeEvent() {
+  editingEventId = null;
   document.getElementById('eventOverlay').classList.add('hidden');
+  document.querySelector('#eventOverlay .modal-header h3').textContent = 'Add an Event';
   document.getElementById('eventForm').reset();
   document.getElementById('clubGroup').classList.remove('hidden');
   document.getElementById('eventClubColor').value = '#8B5CF6';
@@ -1625,10 +1685,16 @@ document.getElementById('eventForm').addEventListener('submit', e => {
     : (parseInt(durSel) || null);
   const notes     = document.getElementById('eventNotes').value.trim();
   if (!title || !date) return;
-  events.push({ id: genId(), title, date, startTime, category, club, color, durationMins: duration, notes });
+  if (editingEventId) {
+    const idx = events.findIndex(e => e.id === editingEventId);
+    if (idx !== -1) events[idx] = { ...events[idx], title, date, startTime, category, club, color, durationMins: duration, notes };
+  } else {
+    events.push({ id: genId(), title, date, startTime, category, club, color, durationMins: duration, notes });
+  }
+  const wasEditing = !!editingEventId;
   saveEvents();
   closeEvent();
-  if (activeView === 'calendar') renderCalendar();
+  if (activeView === 'calendar') { renderCalendar(); if (wasEditing && selectedDay) showDayDetail(selectedDay); }
   if (activeView === 'plan')     renderPlan();
 });
 

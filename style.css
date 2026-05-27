@@ -830,6 +830,20 @@ body {
 .detail-stars { font-size: 11px; color: var(--star-color); letter-spacing: -1px; }
 .detail-card-notes { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.4; font-style: italic; }
 .detail-card-subs { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.detail-event-actions {
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  padding: 8px 10px 8px 4px; opacity: 0;
+  transition: opacity 0.15s;
+}
+.detail-card:hover .detail-event-actions { opacity: 1; }
+.detail-event-btn {
+  background: none; border: none; cursor: pointer; font-size: 13px;
+  padding: 3px 5px; border-radius: 5px; color: var(--muted);
+  transition: background 0.12s, color 0.12s; line-height: 1;
+}
+.detail-event-btn:hover { background: var(--surface-3); color: var(--text); }
+.detail-event-btn.danger:hover { background: #FEE2E2; color: #EF4444; }
+[data-theme="dark"] .detail-event-btn.danger:hover { background: #3b1515; color: #f87171; }
 .detail-done-check {
   width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
