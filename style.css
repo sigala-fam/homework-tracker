@@ -330,10 +330,11 @@ body {
   width: 310px;
   flex-shrink: 0;
   background: var(--col-bg);
+  background: color-mix(in srgb, var(--col-accent, transparent) 11%, var(--col-bg));
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
-  transition: background 0.25s;
+  transition: background 0.4s;
 }
 
 .column-header {

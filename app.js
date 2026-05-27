@@ -314,8 +314,8 @@ function renderBoard() {
     const subtitle = subjects.filter(s => s.day === col.id).map(s => escHtml(s.label)).join(' · ') || 'No classes';
     const initial  = col.label.charAt(0).toUpperCase();
     return `
-      <div class="board-column" data-col="${col.id}">
-        <div class="column-header" style="--col-accent:${col.color}">
+      <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color}">
+        <div class="column-header">
           <div class="column-title-row">
             <span class="day-pill" style="background:${col.color}">${escHtml(initial)}</span>
             <h2 class="column-title">${escHtml(col.label)}</h2>
@@ -1913,8 +1913,12 @@ function openColumnColorPicker(colId, swatchBtn) {
   input.addEventListener('input', e => {
     col.color = e.target.value;
     swatchBtn.style.background = col.color;
-    const pill = swatchBtn.closest('.board-column')?.querySelector('.day-pill');
-    if (pill) pill.style.background = col.color;
+    const colEl = swatchBtn.closest('.board-column');
+    if (colEl) {
+      colEl.style.setProperty('--col-accent', col.color);
+      const pill = colEl.querySelector('.day-pill');
+      if (pill) pill.style.background = col.color;
+    }
   });
   input.addEventListener('change', () => {
     saveColumns();
