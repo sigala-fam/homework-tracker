@@ -1027,14 +1027,14 @@ body {
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .task-form label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.task-form input,
+.task-form input:not([type="color"]),
 .task-form select {
   width: 100%; padding: 9px 12px;
   border: 1px solid var(--border); border-radius: 8px;
   font-size: 13px; background: var(--surface-2); color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.task-form input:focus,
+.task-form input:not([type="color"]):focus,
 .task-form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
 
 .form-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
