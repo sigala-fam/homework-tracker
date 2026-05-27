@@ -360,7 +360,7 @@ body {
   display: flex; flex-direction: column; gap: 10px;
 }
 
-.column-add-btn {
+.column-add-class-btn {
   margin: 4px 10px 10px;
   background: none;
   border: 1.5px dashed var(--border);
@@ -372,7 +372,7 @@ body {
   transition: border-color 0.15s, color 0.15s, background 0.15s;
   flex-shrink: 0;
 }
-.column-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.column-add-class-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
 /* Column header actions (rename / delete) */
 .column-header-actions { display: flex; gap: 3px; margin-left: auto; }
@@ -388,18 +388,18 @@ body {
 .column-header-btn.danger:hover { background: #FEE2E2; color: #EF4444; }
 [data-theme="dark"] .column-header-btn.danger:hover { background: #3b1515; color: #f87171; }
 
-/* Column color swatch (customize mode only) */
+/* Column color swatch — visible on column hover */
 .customize-col-color-btn {
-  display: none !important;
+  display: inline-flex;
   width: 18px; height: 18px;
   border-radius: 50%; padding: 0;
   border: 2px solid var(--surface);
   box-shadow: 0 0 0 1.5px var(--border);
-  cursor: pointer; opacity: 1 !important;
-  transition: transform 0.12s, box-shadow 0.12s;
+  cursor: pointer; opacity: 0;
+  transition: opacity 0.15s, transform 0.12s, box-shadow 0.12s;
 }
+.board-column:hover .customize-col-color-btn { opacity: 1; }
 .customize-col-color-btn:hover { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent); }
-.customize-mode .customize-col-color-btn { display: inline-flex !important; }
 
 /* Add-column placeholder column */
 .column-add-col {
@@ -413,11 +413,15 @@ body {
   transition: border-color 0.15s, background 0.15s;
   min-height: 140px;
 }
-.column-add-col:hover { border-color: var(--accent); background: var(--accent-light); }
+.column-add-col:hover {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
 .column-add-col-icon { font-size: 26px; color: var(--muted); line-height: 1; }
 .column-add-col-label { font-size: 13px; font-weight: 600; color: var(--muted); }
 .column-add-col:hover .column-add-col-icon,
-.column-add-col:hover .column-add-col-label { color: var(--accent); }
+.column-add-col:hover .column-add-col-label { color: var(--text); }
 
 /* Inline new-column form */
 .new-column-form {

@@ -327,7 +327,7 @@ function renderBoard() {
           <p class="column-subtitle">${subtitle}</p>
         </div>
         <div class="column-body" id="col-${col.id}"></div>
-        <button class="column-add-btn" data-day="${col.id}">+ Add task</button>
+        <button class="column-add-class-btn" data-day="${col.id}">＋ Add class</button>
       </div>`;
   }).join('') + `
     <div class="column-add-col" id="addColumnBtn">
@@ -337,12 +337,11 @@ function renderBoard() {
 
   columns.forEach(col => renderColumnTasks(col.id));
 
-  container.querySelectorAll('.column-add-btn').forEach(btn => {
+  container.querySelectorAll('.column-add-class-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      prefilterDay = btn.dataset.day;
-      openModal();
-      const first = subjects.find(s => s.day === prefilterDay);
-      if (first) document.getElementById('taskSubject').value = first.id;
+      openClasses();
+      document.getElementById('newClassDay').value = btn.dataset.day;
+      document.querySelector('.add-class-form')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   });
 
@@ -1109,13 +1108,18 @@ function renderLegend() {
       `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div><span>${escHtml(s.label)}</span></div>`
     ).join('');
   }
-  html += `
-    <div class="legend-section-label">Events</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#8B5CF6"></div><span>Theater</span></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#3B82F6"></div><span>ACE</span></div>
-    <div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div><span>Sci Olympiad</span></div>
-    <div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>
-  `;
+  const clubsUsed = [...new Set(events.filter(e => e.category === 'club').map(e => e.club))];
+  const hasPersonal = events.some(e => e.category === 'personal');
+  if (clubsUsed.length || hasPersonal) {
+    html += `<div class="legend-section-label">Events</div>`;
+    clubsUsed.forEach(clubKey => {
+      const info = CLUBS[clubKey] || { label: clubKey, color: '#6B7280' };
+      html += `<div class="legend-item"><div class="legend-dot" style="background:${info.color}"></div><span>${escHtml(info.label)}</span></div>`;
+    });
+    if (hasPersonal) {
+      html += `<div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>`;
+    }
+  }
   document.getElementById('calLegend').innerHTML = html;
 }
 
@@ -1536,7 +1540,7 @@ document.getElementById('addClassBtn').addEventListener('click', () => {
   const n = document.getElementById('newClassName'), c = document.getElementById('newClassColor'), d = document.getElementById('newClassDay');
   const name = n.value.trim(); if (!name) { n.focus(); return; }
   subjects.push({ id:genId(), label:name, color:c.value, day:d.value, priority:3 });
-  saveSubjects(); populateSubjectDropdown(); updateColumnSubtitles();
+  saveSubjects(); populateSubjectDropdown();
   n.value=''; c.value='#6366F1';
   renderClassesList(); renderBoard();
 });
@@ -1553,6 +1557,10 @@ function closeEvent() {
   document.getElementById('eventOverlay').classList.add('hidden');
   document.getElementById('eventForm').reset();
   document.getElementById('clubGroup').classList.remove('hidden');
+  const customInput = document.getElementById('eventDurationCustom');
+  customInput.classList.add('hidden');
+  document.getElementById('eventDurationHours').value = '';
+  document.getElementById('eventDurationMins').value  = '';
 }
 
 document.getElementById('openEvent').addEventListener('click', () => openEvent());
@@ -1564,13 +1572,29 @@ document.getElementById('eventCategory').addEventListener('change', e => {
   document.getElementById('clubGroup').classList.toggle('hidden', e.target.value !== 'club');
 });
 
+document.getElementById('eventDuration').addEventListener('change', e => {
+  const customInput = document.getElementById('eventDurationCustom');
+  if (e.target.value === 'custom') {
+    customInput.classList.remove('hidden');
+    document.getElementById('eventDurationHours').focus();
+  } else {
+    customInput.classList.add('hidden');
+    document.getElementById('eventDurationHours').value = '';
+    document.getElementById('eventDurationMins').value  = '';
+  }
+});
+
 document.getElementById('eventForm').addEventListener('submit', e => {
   e.preventDefault();
   const title    = document.getElementById('eventTitle').value.trim();
   const date     = document.getElementById('eventDate').value;
   const category = document.getElementById('eventCategory').value;
   const club     = category === 'club' ? document.getElementById('eventClub').value : null;
-  const duration = parseInt(document.getElementById('eventDuration').value) || null;
+  const durSel   = document.getElementById('eventDuration').value;
+  const duration = durSel === 'custom'
+    ? (((parseInt(document.getElementById('eventDurationHours').value) || 0) * 60 +
+        (parseInt(document.getElementById('eventDurationMins').value)  || 0)) || null)
+    : (parseInt(durSel) || null);
   const notes    = document.getElementById('eventNotes').value.trim();
   if (!title || !date) return;
   events.push({ id: genId(), title, date, category, club, durationMins: duration, notes });
@@ -1593,7 +1617,7 @@ const GRADIENTS = [
 ];
 
 function getStyle() {
-  return JSON.parse(localStorage.getItem('hw-style') || 'null') || { bg: null, font: 'Inter', boardTitle: 'Milanote 2.0', boardEmoji: '📚' };
+  return JSON.parse(localStorage.getItem('hw-style') || 'null') || { bg: null, font: 'Inter', boardTitle: 'Homework Tracker', boardEmoji: '📚' };
 }
 function saveStyle(s) { localStorage.setItem('hw-style', JSON.stringify(s)); }
 
@@ -1620,12 +1644,13 @@ function applyBg(bg) {
 
 function applyStyle() {
   const s = getStyle();
+  if (s.boardTitle === 'Milanote 2.0') { s.boardTitle = 'Homework Tracker'; saveStyle(s); }
   applyBg(s.bg);
   document.documentElement.style.setProperty('--font-family', `'${s.font || 'Inter'}', sans-serif`);
   const logoEl = document.querySelector('.logo');
   const titleEl = document.querySelector('.header h1');
   if (logoEl)  logoEl.textContent  = s.boardEmoji || '📚';
-  if (titleEl) titleEl.textContent = s.boardTitle  || 'Milanote 2.0';
+  if (titleEl) titleEl.textContent = s.boardTitle  || 'Homework Tracker';
 }
 
 let customizeMode = false;
@@ -1645,7 +1670,7 @@ function syncCustomizePanelToStyle() {
     p.classList.toggle('active', p.dataset.font === (s.font || 'Inter'))
   );
   document.getElementById('customizeEmoji').value       = s.boardEmoji || '📚';
-  document.getElementById('customizeTitleInput').value  = s.boardTitle  || 'Milanote 2.0';
+  document.getElementById('customizeTitleInput').value  = s.boardTitle  || 'Homework Tracker';
   const bg = s.bg || '';
   if (!bg || bg.match(/^#|^rgb/)) {
     activateBgTab('color');
@@ -1741,7 +1766,7 @@ document.querySelectorAll('.customize-font-pill').forEach(pill =>
 
 // Title / Emoji
 document.getElementById('customizeTitleInput').addEventListener('input', e => {
-  const s = getStyle(); s.boardTitle = e.target.value || 'Milanote 2.0'; saveStyle(s);
+  const s = getStyle(); s.boardTitle = e.target.value || 'Homework Tracker'; saveStyle(s);
   const titleEl = document.querySelector('.header h1');
   if (titleEl) titleEl.textContent = s.boardTitle;
 });
@@ -1751,10 +1776,10 @@ document.getElementById('customizeEmoji').addEventListener('input', e => {
   if (logoEl) logoEl.textContent = s.boardEmoji;
 });
 document.getElementById('titleReset').addEventListener('click', () => {
-  const s = getStyle(); s.boardTitle = 'Milanote 2.0'; s.boardEmoji = '📚'; saveStyle(s);
-  document.getElementById('customizeTitleInput').value = 'Milanote 2.0';
+  const s = getStyle(); s.boardTitle = 'Homework Tracker'; s.boardEmoji = '📚'; saveStyle(s);
+  document.getElementById('customizeTitleInput').value = 'Homework Tracker';
   document.getElementById('customizeEmoji').value = '📚';
-  document.querySelector('.header h1').textContent = 'Milanote 2.0';
+  document.querySelector('.header h1').textContent = 'Homework Tracker';
   document.querySelector('.logo').textContent = '📚';
 });
 
