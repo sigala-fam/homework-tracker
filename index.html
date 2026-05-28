@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Homework Tracker</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236D28D9'/><text y='.9em' font-size='75' x='12'>📚</text></svg>" />
+  <title>TaskNest</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23A855F7'/><stop offset='100%25' stop-color='%23EC4899'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><polyline points='22,58 42,78 78,28' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -15,8 +15,14 @@
   <!-- ── Login Screen ── -->
   <div id="loginOverlay" class="login-overlay">
     <div class="login-card">
-      <div class="login-logo">📚</div>
-      <h1 class="login-title">Homework Tracker</h1>
+      <div class="login-logo-icon">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
+          <polyline points="6,22 16,32 34,10" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1 class="login-title">
+        <span class="logo-task">Task</span><span class="logo-nest">Nest</span>
+      </h1>
       <p class="login-subtitle">Sign in to save your tasks across all your devices.</p>
 
       <button id="btnGoogleSignIn" class="btn-google">
@@ -51,10 +57,15 @@
   <!-- ── Header ── -->
   <header class="header">
     <div class="header-left">
-      <div class="header-logo-icon">
-        <span class="logo">📚</span>
+      <div class="logo-wordmark">
+        <div class="logo-wordmark-row">
+          <span class="logo-task">Task</span><span class="logo-nest">Nest</span>
+        </div>
+        <div class="logo-underline"></div>
       </div>
-      <h1>Homework Tracker</h1>
+      <!-- kept for JS compatibility, not visible -->
+      <span class="logo" style="display:none">📚</span>
+      <h1 style="display:none">Homework Tracker</h1>
     </div>
 
     <div class="header-divider"></div>

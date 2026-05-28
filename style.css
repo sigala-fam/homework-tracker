@@ -104,6 +104,62 @@ body {
 .logo { font-size: 15px; }
 .header h1 { font-size: 15px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); }
 
+/* ── TaskNest Wordmark ── */
+.logo-wordmark {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.logo-wordmark-row {
+  display: flex;
+  align-items: baseline;
+  line-height: 1;
+}
+.logo-task {
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.logo-nest {
+  font-weight: 300;
+  letter-spacing: -0.5px;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.logo-underline {
+  height: 2px;
+  background: var(--accent-grad);
+  border-radius: 1px;
+}
+
+/* header wordmark size */
+.header .logo-wordmark .logo-task,
+.header .logo-wordmark .logo-nest { font-size: 16px; }
+
+/* login logo icon */
+.login-logo-icon {
+  width: 68px;
+  height: 68px;
+  background: var(--accent-grad);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 24px rgba(168,85,247,0.35);
+}
+
+/* login title wordmark */
+.login-title .logo-task,
+.login-title .logo-nest { font-size: 32px; }
+.login-title { margin-bottom: 6px; }
+
 /* View Tabs */
 .view-nav {
   display: flex;
