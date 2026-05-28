@@ -330,7 +330,7 @@ body {
   width: 310px;
   flex-shrink: 0;
   background: var(--col-bg);
-  background: color-mix(in srgb, var(--col-accent, transparent) 11%, var(--col-bg));
+  background: color-mix(in srgb, var(--col-tint, transparent) 11%, var(--col-bg));
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
@@ -398,6 +398,54 @@ body {
 }
 .board-column:hover .customize-col-color-btn { opacity: 1; }
 .customize-col-color-btn:hover { transform: scale(1.25); box-shadow: 0 0 0 2px var(--accent); }
+
+/* Column tint color picker popup */
+.col-tint-popup {
+  position: fixed;
+  z-index: 9999;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 160px;
+}
+.col-tint-popup-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.col-tint-input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 2px;
+  background: none;
+}
+.col-tint-reset-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.col-tint-reset-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--accent);
+}
 
 /* Add-column placeholder column */
 .column-add-col {

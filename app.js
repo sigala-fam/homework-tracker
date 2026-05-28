@@ -314,7 +314,7 @@ function renderBoard() {
     const subtitle = subjects.filter(s => s.day === col.id).map(s => escHtml(s.label)).join(' · ') || 'No classes';
     const initial  = col.label.charAt(0).toUpperCase();
     return `
-      <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color}">
+      <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)}">
         <div class="column-header">
           <div class="column-title-row">
             <span class="day-pill" style="background:${col.color}">${escHtml(initial)}</span>
@@ -1901,34 +1901,57 @@ document.getElementById('titleReset').addEventListener('click', () => {
 document.getElementById('openCustomize').addEventListener('click', toggleCustomizeMode);
 document.getElementById('closeCustomizePanel').addEventListener('click', toggleCustomizeMode);
 
-// Column color picker
+// Column color picker — visible popup with a real color input + reset button
 function openColumnColorPicker(colId, swatchBtn) {
   const col = columns.find(c => c.id === colId);
   if (!col) return;
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.value = col.color;
-  input.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:0;height:0;';
-  document.body.appendChild(input);
-  input.addEventListener('input', e => {
-    col.color = e.target.value;
+
+  // Close any existing popup first
+  document.querySelectorAll('.col-tint-popup').forEach(p => p.remove());
+
+  const colEl = swatchBtn.closest('.board-column');
+  const popup = document.createElement('div');
+  popup.className = 'col-tint-popup';
+  const currentTint = col.tint === 'none' ? col.color : (col.tint || col.color);
+  popup.innerHTML = `
+    <div class="col-tint-popup-label">Column tint color</div>
+    <input type="color" class="col-tint-input" value="${currentTint}" />
+    <button class="col-tint-reset-btn">Remove tint</button>
+  `;
+
+  // Position popup below the swatch button
+  const rect = swatchBtn.getBoundingClientRect();
+  popup.style.top  = (rect.bottom + 8) + 'px';
+  popup.style.left = rect.left + 'px';
+  document.body.appendChild(popup);
+
+  const colorInput = popup.querySelector('.col-tint-input');
+  const resetBtn   = popup.querySelector('.col-tint-reset-btn');
+
+  colorInput.addEventListener('input', e => {
+    col.tint = e.target.value;
+    swatchBtn.style.background = col.tint;
+    if (colEl) colEl.style.setProperty('--col-tint', col.tint);
+  });
+
+  colorInput.addEventListener('change', () => saveColumns());
+
+  resetBtn.addEventListener('click', () => {
+    col.tint = 'none';
     swatchBtn.style.background = col.color;
-    const colEl = swatchBtn.closest('.board-column');
-    if (colEl) {
-      colEl.style.setProperty('--col-accent', col.color);
-      const pill = colEl.querySelector('.day-pill');
-      if (pill) pill.style.background = col.color;
-    }
-  });
-  input.addEventListener('change', () => {
+    if (colEl) colEl.style.setProperty('--col-tint', 'transparent');
     saveColumns();
-    renderBoard();
-    if (document.body.contains(input)) document.body.removeChild(input);
+    popup.remove();
   });
-  input.addEventListener('blur', () => {
-    setTimeout(() => { if (document.body.contains(input)) document.body.removeChild(input); }, 200);
-  });
-  input.click();
+
+  // Close when clicking outside
+  function onOutsideClick(e) {
+    if (!popup.contains(e.target) && e.target !== swatchBtn) {
+      popup.remove();
+      document.removeEventListener('mousedown', onOutsideClick, true);
+    }
+  }
+  setTimeout(() => document.addEventListener('mousedown', onOutsideClick, true), 0);
 }
 
 // ── Firebase Auth + Init ──────────────────────────────────
