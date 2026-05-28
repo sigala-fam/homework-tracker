@@ -10,7 +10,7 @@ import { getFirestore, doc, getDoc, setDoc }                    from 'https://ww
 
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
-  authDomain:        'ivanmikhailiv.com',
+  authDomain:        'homework-tracker-761e1.firebaseapp.com',
   projectId:         'homework-tracker-761e1',
   storageBucket:     'homework-tracker-761e1.firebasestorage.app',
   messagingSenderId: '1026373078825',
