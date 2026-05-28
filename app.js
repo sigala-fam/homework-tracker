@@ -1814,13 +1814,8 @@ function applyBg(bg) {
 
 function applyStyle() {
   const s = getStyle();
-  if (s.boardTitle === 'Milanote 2.0') { s.boardTitle = 'Homework Tracker'; saveStyle(s); }
   applyBg(s.bg);
   document.documentElement.style.setProperty('--font-family', `'${s.font || 'Inter'}', sans-serif`);
-  const logoEl = document.querySelector('.logo');
-  const titleEl = document.querySelector('.header h1');
-  if (logoEl)  logoEl.textContent  = s.boardEmoji || '📚';
-  if (titleEl) titleEl.textContent = s.boardTitle  || 'Homework Tracker';
 }
 
 let customizeMode = false;
@@ -1839,8 +1834,6 @@ function syncCustomizePanelToStyle() {
   document.querySelectorAll('.customize-font-pill').forEach(p =>
     p.classList.toggle('active', p.dataset.font === (s.font || 'Inter'))
   );
-  document.getElementById('customizeEmoji').value       = s.boardEmoji || '📚';
-  document.getElementById('customizeTitleInput').value  = s.boardTitle  || 'Homework Tracker';
   const bg = s.bg || '';
   if (!bg || bg.match(/^#|^rgb/)) {
     activateBgTab('color');
@@ -1933,25 +1926,6 @@ document.querySelectorAll('.customize-font-pill').forEach(pill =>
     document.querySelectorAll('.customize-font-pill').forEach(p => p.classList.toggle('active', p === pill));
   })
 );
-
-// Title / Emoji
-document.getElementById('customizeTitleInput').addEventListener('input', e => {
-  const s = getStyle(); s.boardTitle = e.target.value || 'Homework Tracker'; saveStyle(s);
-  const titleEl = document.querySelector('.header h1');
-  if (titleEl) titleEl.textContent = s.boardTitle;
-});
-document.getElementById('customizeEmoji').addEventListener('input', e => {
-  const s = getStyle(); s.boardEmoji = e.target.value || '📚'; saveStyle(s);
-  const logoEl = document.querySelector('.logo');
-  if (logoEl) logoEl.textContent = s.boardEmoji;
-});
-document.getElementById('titleReset').addEventListener('click', () => {
-  const s = getStyle(); s.boardTitle = 'Homework Tracker'; s.boardEmoji = '📚'; saveStyle(s);
-  document.getElementById('customizeTitleInput').value = 'Homework Tracker';
-  document.getElementById('customizeEmoji').value = '📚';
-  document.querySelector('.header h1').textContent = 'Homework Tracker';
-  document.querySelector('.logo').textContent = '📚';
-});
 
 // Close panel
 document.getElementById('openCustomize').addEventListener('click', toggleCustomizeMode);
