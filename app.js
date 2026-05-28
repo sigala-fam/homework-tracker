@@ -767,14 +767,19 @@ const difficultyStars = initStarRow('difficultyRow', 'taskDifficulty', 'difficul
 
 // ── Priority Algorithm ────────────────────────────────────
 // Compute total available study hours from today up to (and including) dueStr.
+// Subtracts any events on each day so the score reflects your real free time.
 function availableHoursUntil(dueStr) {
   const settings  = getSettings();
   const dayKeys   = ['sun','mon','tue','wed','thu','fri','sat'];
+  const evMap     = eventsByDay();
   const today     = new Date(); today.setHours(0,0,0,0);
   const due       = new Date(dueStr + 'T00:00:00');
   let total = 0;
   for (let d = new Date(today); d <= due; d.setDate(d.getDate() + 1)) {
-    total += settings.dailyHours[dayKeys[d.getDay()]] ?? 2;
+    const dateStr    = fmtDate(d);
+    const budgetMins = (settings.dailyHours[dayKeys[d.getDay()]] ?? 2) * 60;
+    const evMins     = (evMap[dateStr] || []).reduce((s, e) => s + effectiveDuration(e), 0);
+    total += Math.max(0, budgetMins - evMins) / 60;
   }
   return total;
 }
@@ -913,7 +918,7 @@ function buildDailySchedule() {
     const dayKey     = dayKeys[d.getDay()];
     const hoursAvail = settings.dailyHours[dayKey] ?? 2;
     const dayEvs     = evMap[dateStr] || [];
-    const eventMins  = dayEvs.reduce((sum, e) => sum + (e.durationMins || 0), 0);
+    const eventMins  = dayEvs.reduce((sum, e) => sum + effectiveDuration(e), 0);
     let availMins    = Math.max(0, hoursAvail * 60 - eventMins);
     const dayTasks   = [];
 
@@ -956,16 +961,29 @@ function renderDailySchedule() {
     const isToday  = date === today;
     const freeLeft = Math.max(0, hoursAvail*60 - totalMins - eventMins);
 
-    const evHtml = dayEvs.map(e => {
-      const color = eventColor(e);
-      const label = eventLabel(e);
+    // Sort events by start time so they appear in chronological order
+    const sortedEvs = [...dayEvs].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+
+    // Compute latest event end time (for "study after X" hint)
+    let lastEventEnd = null;
+    sortedEvs.forEach(e => {
+      const end = eventEndTimeStr(e);
+      if (end && (!lastEventEnd || end > lastEventEnd)) lastEventEnd = end;
+    });
+
+    const evHtml = sortedEvs.map(e => {
+      const color   = eventColor(e);
+      const label   = eventLabel(e);
+      const endT    = eventEndTimeStr(e);
+      const timeStr = e.startTime ? fmtTimeRange(e.startTime, endT) : '';
+      const durStr  = !e.startTime && effectiveDuration(e) ? fmtMins(effectiveDuration(e)) : '';
       return `
-        <div class="schedule-task" style="--subject-color:${color}">
+        <div class="schedule-task schedule-event" style="--subject-color:${color}">
           <div class="schedule-task-name">${escHtml(e.title)}</div>
           <div class="schedule-task-meta">
             <span class="schedule-task-subject" style="background:${color}">${label}</span>
-            ${e.startTime ? `<span class="schedule-task-time">🕐 ${fmtTime(e.startTime)}</span>` : ''}
-            ${e.durationMins ? `<span class="schedule-task-time">⏱ ${fmtMins(e.durationMins)}</span>` : ''}
+            ${timeStr ? `<span class="schedule-task-time">🕐 ${timeStr}</span>` : ''}
+            ${durStr  ? `<span class="schedule-task-time">⏱ ${durStr}</span>`  : ''}
           </div>
         </div>`;
     }).join('');
@@ -982,7 +1000,14 @@ function renderDailySchedule() {
         </div>`;
     }).join('');
 
-    const allHtml = evHtml + taskHtml || `<p class="schedule-free">Free day — nothing scheduled</p>`;
+    // Study-window divider: if there are events with known end times and also tasks to do
+    const studyDivider = (evHtml && taskHtml && lastEventEnd)
+      ? `<div class="schedule-study-window">📚 Study time — after ${fmtTime(lastEventEnd)}</div>`
+      : (evHtml && taskHtml)
+      ? `<div class="schedule-study-window">📚 Study time</div>`
+      : '';
+
+    const allHtml = evHtml + studyDivider + taskHtml || `<p class="schedule-free">Free day — nothing scheduled</p>`;
 
     return `
       <div class="schedule-day">
@@ -1301,8 +1326,9 @@ function showDayDetail(dateStr) {
 
     const meta = [];
     meta.push(`<span class="detail-badge event-badge" style="background:${color}">${escHtml(typeLabel)}</span>`);
-    if (e.startTime) meta.push(`<span class="detail-badge">🕐 ${fmtTime(e.startTime)}</span>`);
-    if (e.durationMins) meta.push(`<span class="detail-badge">⏱ ${e.durationMins >= 60 ? (e.durationMins/60 % 1 === 0 ? e.durationMins/60 + 'h' : (e.durationMins/60).toFixed(1) + 'h') : e.durationMins + ' min'}</span>`);
+    const evEnd = eventEndTimeStr(e);
+    if (e.startTime) meta.push(`<span class="detail-badge">🕐 ${fmtTimeRange(e.startTime, evEnd)}</span>`);
+    else if (effectiveDuration(e)) meta.push(`<span class="detail-badge">⏱ ${fmtMins(effectiveDuration(e))}</span>`);
 
     return `
       <div class="detail-card" data-event-id="${e.id}">
@@ -1349,6 +1375,7 @@ function openEditEvent(id) {
   document.getElementById('eventTitle').value    = ev.title;
   document.getElementById('eventDate').value     = ev.date;
   document.getElementById('eventTime').value     = ev.startTime || '';
+  document.getElementById('eventEndTime').value  = ev.endTime   || '';
   document.getElementById('eventCategory').value = ev.category;
   document.getElementById('eventNotes').value    = ev.notes || '';
 
@@ -1629,6 +1656,34 @@ function fmtTime(t) {
   return `${h % 12 || 12}:${String(m).padStart(2,'0')}${ampm}`;
 }
 
+// Total minutes an event occupies (uses endTime if set, falls back to durationMins)
+function effectiveDuration(e) {
+  if (e.startTime && e.endTime) {
+    const [sh, sm] = e.startTime.split(':').map(Number);
+    const [eh, em] = e.endTime.split(':').map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    return diff > 0 ? diff : 0;
+  }
+  return e.durationMins || 0;
+}
+
+// Returns the end time string for an event — explicit endTime, or computed from startTime+duration
+function eventEndTimeStr(e) {
+  if (e.endTime) return e.endTime;
+  if (e.startTime && e.durationMins) {
+    const [h, m] = e.startTime.split(':').map(Number);
+    const total  = h * 60 + m + e.durationMins;
+    return String(Math.floor(total / 60) % 24).padStart(2,'0') + ':' + String(total % 60).padStart(2,'0');
+  }
+  return null;
+}
+
+// "3:30pm → 4:30pm" or just "3:30pm" if no end
+function fmtTimeRange(startT, endT) {
+  if (!startT) return '';
+  return fmtTime(startT) + (endT ? ' → ' + fmtTime(endT) : '');
+}
+
 // ── Add Event Modal ───────────────────────────────────────
 function openEvent(prefillDate) {
   document.getElementById('eventDate').value = prefillDate || todayStr();
@@ -1674,7 +1729,8 @@ document.getElementById('eventForm').addEventListener('submit', e => {
   e.preventDefault();
   const title     = document.getElementById('eventTitle').value.trim();
   const date      = document.getElementById('eventDate').value;
-  const startTime = document.getElementById('eventTime').value || null;
+  const startTime = document.getElementById('eventTime').value    || null;
+  const endTime   = document.getElementById('eventEndTime').value || null;
   const category  = document.getElementById('eventCategory').value;
   const club      = category === 'club' ? document.getElementById('eventClub').value.trim() : null;
   const color     = category === 'club' ? document.getElementById('eventClubColor').value : PERSONAL_COLOR;
@@ -1687,9 +1743,9 @@ document.getElementById('eventForm').addEventListener('submit', e => {
   if (!title || !date) return;
   if (editingEventId) {
     const idx = events.findIndex(e => e.id === editingEventId);
-    if (idx !== -1) events[idx] = { ...events[idx], title, date, startTime, category, club, color, durationMins: duration, notes };
+    if (idx !== -1) events[idx] = { ...events[idx], title, date, startTime, endTime, category, club, color, durationMins: duration, notes };
   } else {
-    events.push({ id: genId(), title, date, startTime, category, club, color, durationMins: duration, notes });
+    events.push({ id: genId(), title, date, startTime, endTime, category, club, color, durationMins: duration, notes });
   }
   const wasEditing = !!editingEventId;
   saveEvents();
