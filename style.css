@@ -1729,11 +1729,32 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 ══════════════════════════════ */
 @media (max-width: 640px) {
 
-  /* Header — tighten up so it fits */
-  .header { padding: 0 12px; gap: 8px; }
-  .header h1 { font-size: 14px; }
+  /* Header — two-row layout on mobile */
+  .header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 14px 0;
+    gap: 4px;
+    align-items: center;
+  }
+  .header-left  { order: 1; flex: 1; }
+  .header-right { order: 2; margin-left: 0; }
+  .header-divider { display: none; }
+
+  /* Nav tabs: own row, scrollable sideways */
+  .view-nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 4px 0 10px;
+  }
+  .view-nav::-webkit-scrollbar { display: none; }
+  .view-tab { flex-shrink: 0; }
+
   .icon-btn { padding: 5px 8px; font-size: 11px; }
-  #openSettings, #openCustomize { display: none; } /* hide less-used buttons */
+  #openSettings, #openCustomize { display: none; }
 
   /* Board — allow horizontal scroll as before, just less padding */
   .board-view { padding: 12px 10px; }
@@ -1745,7 +1766,7 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
     padding: 10px;
     gap: 10px;
     height: auto;
-    min-height: calc(100vh - 84px);
+    min-height: calc(100vh - 110px);
   }
 
   /* Hide the legend sidebar on mobile — not enough room */
