@@ -251,33 +251,70 @@ function renderStatusLine() {
   const el = document.getElementById('statusLine');
   if (!el) return;
 
-  const now = new Date();
+  const now  = new Date();
   const hour = now.getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = currentUser?.displayName?.split(' ')[0] || '';
+  const greeting    = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName   = currentUser?.displayName?.split(' ')[0] || '';
   const greetingText = firstName ? `${greeting}, ${firstName}` : greeting;
 
-  const startOfWeek = new Date(now);
-  startOfWeek.setHours(0, 0, 0, 0);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 7);
+  const today     = todayStr();
+  const todayDate = new Date(today + 'T00:00:00');
 
-  const weekTasks = tasks.filter(t => {
-    if (!t.due) return false;
+  // Week = Sun–Sat of the current week
+  const weekStart = new Date(todayDate);
+  weekStart.setDate(todayDate.getDate() - todayDate.getDay());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+
+  // Month = rest of the current calendar month beyond this week
+  const monthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
+
+  const incomplete = tasks.filter(t => !t.done && t.due);
+
+  // Tasks: priority tiers (tasks > events, today > week > month)
+  const todayTasks = incomplete.filter(t => daysUntil(t.due) <= 0);           // due today + overdue
+  const weekTasks  = incomplete.filter(t => {
     const d = new Date(t.due + 'T00:00:00');
-    return d >= startOfWeek && d < endOfWeek;
+    return d > todayDate && d < weekEnd;
   });
-  const overdueTasks = tasks.filter(t => t.due && !t.done && daysUntil(t.due) < 0);
+  const monthTasks = incomplete.filter(t => {
+    const d = new Date(t.due + 'T00:00:00');
+    return d >= weekEnd && d < monthEnd;
+  });
 
-  let html = `<span class="status-item">${greetingText}</span>`;
-  html += `<span class="status-dot"></span>`;
-  html += `<span class="status-item"><strong>${weekTasks.length}</strong>&nbsp;tasks this week</span>`;
-  if (overdueTasks.length > 0) {
-    html += `<span class="status-dot"></span>`;
-    html += `<span class="status-item warn"><strong>${overdueTasks.length}</strong>&nbsp;overdue</span>`;
+  // Events: only if no tasks at all
+  const todayEvts = events.filter(e => e.date === today);
+  const weekEvts  = events.filter(e => {
+    if (!e.date || e.date === today) return false;
+    const d = new Date(e.date + 'T00:00:00');
+    return d > todayDate && d < weekEnd;
+  });
+
+  let msg;
+  const tw = (n, w) => `<strong>${n}</strong>&nbsp;${n === 1 ? w : w + 's'}`;
+
+  if (todayTasks.length > 0) {
+    msg = `${tw(todayTasks.length, 'task')} due today`;
+  } else if (weekTasks.length > 0) {
+    msg = `${tw(weekTasks.length, 'task')} this week`;
+  } else if (monthTasks.length > 0) {
+    msg = `${tw(monthTasks.length, 'task')} this month`;
+  } else if (todayEvts.length === 1) {
+    msg = `You have <strong>${escHtml(todayEvts[0].title)}</strong> today`;
+  } else if (todayEvts.length > 1) {
+    msg = `You have ${tw(todayEvts.length, 'event')} today`;
+  } else if (weekEvts.length === 1) {
+    msg = `<strong>${escHtml(weekEvts[0].title)}</strong> coming up this week`;
+  } else if (weekEvts.length > 1) {
+    msg = `${tw(weekEvts.length, 'event')} coming up this week`;
+  } else {
+    msg = `You're all caught up! 🎉`;
   }
-  el.innerHTML = html;
+
+  el.innerHTML =
+    `<span class="status-item">${greetingText}</span>` +
+    `<span class="status-dot"></span>` +
+    `<span class="status-item">${msg}</span>`;
 }
 
 // ── View Switching ────────────────────────────────────────
