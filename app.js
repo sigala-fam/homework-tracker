@@ -29,6 +29,7 @@ const DEFAULT_SUBJECTS = [];
 
 const DEFAULT_SETTINGS = {
   dailyHours: { mon: 2, tue: 2, wed: 2, thu: 2, fri: 2, sat: 3, sun: 3 },
+  workHours:  { mon: null, tue: null, wed: null, thu: null, fri: null, sat: null, sun: null },
   devMode: false,
 };
 
@@ -766,20 +767,71 @@ function initStarRow(rowId, inputId, hintId) {
 const difficultyStars = initStarRow('difficultyRow', 'taskDifficulty', 'difficultyHint');
 
 // ── Priority Algorithm ────────────────────────────────────
+
+// Net available study minutes for one day, respecting:
+//   • Work time window (if set): only the hours between start→end count
+//   • Events: time blocked by events is subtracted (overlap with window when window is set)
+//   • Today only: minutes already elapsed inside the work window are subtracted
+function computeDayAvailMins(dateStr, settings, dayEvs, now) {
+  const dayKeys = ['sun','mon','tue','wed','thu','fri','sat'];
+  const d       = new Date(dateStr + 'T00:00:00');
+  const dayKey  = dayKeys[d.getDay()];
+  const isToday = dateStr === fmtDate(now);
+  const wh      = settings.workHours?.[dayKey] || null;
+
+  if (wh) {
+    const [wsh, wsm] = wh.start.split(':').map(Number);
+    const [weh, wem] = wh.end.split(':').map(Number);
+    const winStart = wsh * 60 + wsm;
+    const winEnd   = weh * 60 + wem;
+
+    let windowMins;
+    if (isToday) {
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      if (nowMins >= winEnd) {
+        windowMins = 0; // work window has fully passed for today
+      } else {
+        windowMins = winEnd - Math.max(nowMins, winStart);
+      }
+    } else {
+      windowMins = Math.max(0, winEnd - winStart);
+    }
+
+    // Subtract time that events overlap with the work window
+    let evBlocked = 0;
+    for (const e of dayEvs) {
+      if (e.startTime) {
+        const [esh, esm] = e.startTime.split(':').map(Number);
+        const evStart      = esh * 60 + esm;
+        const evEnd        = evStart + effectiveDuration(e);
+        const overlapStart = Math.max(evStart, winStart);
+        const overlapEnd   = Math.min(evEnd,   winEnd);
+        evBlocked += Math.max(0, overlapEnd - overlapStart);
+      } else {
+        // No start time — treat the full duration as blocked within the window
+        evBlocked += Math.min(effectiveDuration(e), windowMins);
+      }
+    }
+    return Math.max(0, windowMins - evBlocked);
+  }
+
+  // No work window — use the daily hours setting minus total event time (existing behaviour)
+  const hoursAvail = settings.dailyHours[dayKey] ?? 2;
+  const eventMins  = dayEvs.reduce((s, e) => s + effectiveDuration(e), 0);
+  return Math.max(0, hoursAvail * 60 - eventMins);
+}
+
 // Compute total available study hours from today up to (and including) dueStr.
-// Subtracts any events on each day so the score reflects your real free time.
 function availableHoursUntil(dueStr) {
-  const settings  = getSettings();
-  const dayKeys   = ['sun','mon','tue','wed','thu','fri','sat'];
-  const evMap     = eventsByDay();
-  const today     = new Date(); today.setHours(0,0,0,0);
-  const due       = new Date(dueStr + 'T00:00:00');
+  const settings = getSettings();
+  const evMap    = eventsByDay();
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const due      = new Date(dueStr + 'T00:00:00');
+  const now      = new Date();
   let total = 0;
   for (let d = new Date(today); d <= due; d.setDate(d.getDate() + 1)) {
-    const dateStr    = fmtDate(d);
-    const budgetMins = (settings.dailyHours[dayKeys[d.getDay()]] ?? 2) * 60;
-    const evMins     = (evMap[dateStr] || []).reduce((s, e) => s + effectiveDuration(e), 0);
-    total += Math.max(0, budgetMins - evMins) / 60;
+    const ds = fmtDate(d);
+    total += computeDayAvailMins(ds, settings, evMap[ds] || [], now) / 60;
   }
   return total;
 }
@@ -904,29 +956,42 @@ function buildDailySchedule() {
   const incomplete = tasks.filter(t => !t.done && t.due);
   if (!incomplete.length) return [];
 
-  // Only schedule up to 75% of daily hours — leaves breathing room and accounts
-  // for the fact that people don't always do homework the moment they get home.
+  // Only schedule up to 75% of available time — leaves breathing room.
   const BUFFER = 0.75;
 
-  const today    = new Date(); today.setHours(0,0,0,0);
+  const now      = new Date();
+  const today    = new Date(now); today.setHours(0,0,0,0);
   const todayStr = fmtDate(today);
   const maxDue   = new Date(incomplete.reduce((m, t) => t.due > m ? t.due : m, todayStr) + 'T00:00:00');
+  // Always build at least 7 days ahead so tasks whose window already passed
+  // today can be rescheduled to an upcoming day.
+  const buildEnd = new Date(Math.max(maxDue.getTime(), today.getTime() + 7 * 86400000));
 
-  // Build per-day info for every day from today → latest due date
+  // Build per-day info for every day from today → buildEnd
   const dayInfo = {};
-  for (let d = new Date(today); d <= maxDue; d.setDate(d.getDate() + 1)) {
-    const ds         = fmtDate(d);
-    const dayKey     = dayKeys[d.getDay()];
-    const hoursAvail = settings.dailyHours[dayKey] ?? 2;
-    const dayEvs     = evMap[ds] || [];
-    const eventMins  = dayEvs.reduce((s, e) => s + effectiveDuration(e), 0);
-    const rawAvail   = Math.max(0, hoursAvail * 60 - eventMins);
+  for (let d = new Date(today); d <= buildEnd; d.setDate(d.getDate() + 1)) {
+    const ds      = fmtDate(d);
+    const dayKey  = dayKeys[d.getDay()];
+    const dayEvs  = evMap[ds] || [];
+    const rawAvail = computeDayAvailMins(ds, settings, dayEvs, now);
+    // hoursAvail is the raw budget shown in the header badge:
+    //   • Work window set → window duration in hours
+    //   • No work window  → the dailyHours setting
+    const wh = settings.workHours?.[dayKey] || null;
+    let hoursAvail;
+    if (wh) {
+      const [wsh, wsm] = wh.start.split(':').map(Number);
+      const [weh, wem] = wh.end.split(':').map(Number);
+      hoursAvail = Math.max(0, (weh * 60 + wem) - (wsh * 60 + wsm)) / 60;
+    } else {
+      hoursAvail = settings.dailyHours[dayKey] ?? 2;
+    }
     dayInfo[ds] = {
       hoursAvail,
       events: dayEvs,
-      eventMins,
+      eventMins: dayEvs.reduce((s, e) => s + effectiveDuration(e), 0),
       availMins: rawAvail,
-      bufferMins: Math.floor(rawAvail * BUFFER), // soft cap
+      bufferMins: Math.floor(rawAvail * BUFFER),
       scheduledMins: 0,
     };
   }
@@ -936,14 +1001,16 @@ function buildDailySchedule() {
     .map(t => ({ ...t, score: priorityScore(t, sMap[t.subject]), minsNeeded: t.estimatedMins || 60 }))
     .sort((a, b) => a.due.localeCompare(b.due) || b.score - a.score);
 
-  const taskDayMap = {}; // dateStr → task[]
+  const taskDayMap = {};
   const assigned   = new Set();
 
   for (const t of scored) {
     if (assigned.has(t.id)) continue;
 
-    // Due today: must schedule today no matter what (skip buffer)
-    if (t.due === todayStr) {
+    const todayAvailMins = dayInfo[todayStr]?.availMins ?? 0;
+
+    // Due today AND time still remains → force to today (skip buffer)
+    if (t.due === todayStr && todayAvailMins > 0) {
       if (!taskDayMap[todayStr]) taskDayMap[todayStr] = [];
       taskDayMap[todayStr].push(t);
       dayInfo[todayStr].scheduledMins += t.minsNeeded;
@@ -951,10 +1018,17 @@ function buildDailySchedule() {
       continue;
     }
 
-    // Gather every day between today and due date
+    // Determine search window:
+    //   Normal tasks: today → due date
+    //   Overdue / today-with-no-time (work window passed): look 7 days ahead
+    //   so the task gets rescheduled rather than being silently dropped.
     const dueDate  = new Date(t.due + 'T00:00:00');
+    const searchEnd = (t.due <= todayStr && todayAvailMins === 0)
+      ? new Date(today.getTime() + 7 * 86400000)
+      : dueDate;
+
     const candidates = [];
-    for (let d = new Date(today); d <= dueDate; d.setDate(d.getDate() + 1)) {
+    for (let d = new Date(today); d <= searchEnd; d.setDate(d.getDate() + 1)) {
       const ds = fmtDate(d);
       if (dayInfo[ds]) {
         const remaining = dayInfo[ds].bufferMins - dayInfo[ds].scheduledMins;
@@ -962,22 +1036,20 @@ function buildDailySchedule() {
       }
     }
 
-    // Days that have enough buffer capacity for this whole task
+    // Days with enough buffer capacity for this whole task
     const fittingDays = candidates.filter(c => c.remaining >= t.minsNeeded);
 
     let chosenDay;
     if (fittingDays.length > 0) {
       // Load-balance: pick the day with the most remaining capacity.
-      // This naturally spreads tasks across free days instead of piling
-      // everything onto the earliest available slot.
+      // This naturally spreads tasks across free days.
       chosenDay = fittingDays.reduce((best, c) => c.remaining > best.remaining ? c : best).ds;
     } else {
-      // Nothing fits within the soft cap — pick whichever day has the most
-      // space left (last resort; may go over buffer slightly).
+      // Nothing fits within the soft cap — pick whichever day has the most space
       const withAny = candidates.filter(c => c.remaining > 0);
       chosenDay = withAny.length > 0
         ? withAny.reduce((best, c) => c.remaining > best.remaining ? c : best).ds
-        : t.due;
+        : (todayAvailMins > 0 ? todayStr : fmtDate(new Date(today.getTime() + 86400000)));
     }
 
     if (!taskDayMap[chosenDay]) taskDayMap[chosenDay] = [];
@@ -986,7 +1058,7 @@ function buildDailySchedule() {
     assigned.add(t.id);
   }
 
-  // Build the final schedule in date order; skip fully empty days
+  // Build final schedule in date order; skip days with nothing on them
   const schedule = [];
   for (const ds of Object.keys(dayInfo).sort()) {
     const info      = dayInfo[ds];
@@ -998,6 +1070,7 @@ function buildDailySchedule() {
         tasks: dayTasks,
         events: info.events,
         hoursAvail: info.hoursAvail,
+        availMins: info.availMins,
         totalMins,
         eventMins: info.eventMins,
       });
@@ -1019,11 +1092,13 @@ function renderDailySchedule() {
 
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-  const rows = schedule.map(({ date, tasks: dayTasks, events: dayEvs, hoursAvail, totalMins, eventMins }) => {
+  const rows = schedule.map(({ date, tasks: dayTasks, events: dayEvs, hoursAvail, availMins, totalMins, eventMins }) => {
     const d        = new Date(date + 'T00:00:00');
     const dayName  = DAYS[d.getDay()];
     const isToday  = date === today;
-    const freeLeft = Math.max(0, hoursAvail*60 - totalMins - eventMins);
+    // availMins is the net usable time (after work window + event deductions);
+    // freeLeft = how much of that remains after scheduled tasks
+    const freeLeft = Math.max(0, (availMins ?? Math.max(0, hoursAvail*60 - eventMins)) - totalMins);
 
     // Sort events by start time so they appear in chronological order
     const sortedEvs = [...dayEvs].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
@@ -1512,6 +1587,35 @@ function openSettings() {
   document.querySelectorAll('.hours-input').forEach(inp => {
     inp.value = s.dailyHours[inp.dataset.day] ?? 2;
   });
+
+  // Work hours — populate and wire up toggles
+  const workHours = s.workHours || {};
+  document.querySelectorAll('.work-hours-enabled').forEach(cb => {
+    const day    = cb.dataset.day;
+    const wh     = workHours[day] || null;
+    const times  = document.querySelector(`.work-hours-times[data-day="${day}"]`);
+    cb.checked   = !!wh;
+    if (times) times.classList.toggle('hidden', !wh);
+    if (wh) {
+      const s = document.querySelector(`.work-start-input[data-day="${day}"]`);
+      const e = document.querySelector(`.work-end-input[data-day="${day}"]`);
+      if (s) s.value = wh.start || '15:00';
+      if (e) e.value = wh.end   || '22:00';
+    }
+    cb.addEventListener('change', () => {
+      const times = document.querySelector(`.work-hours-times[data-day="${cb.dataset.day}"]`);
+      if (times) {
+        times.classList.toggle('hidden', !cb.checked);
+        if (cb.checked) {
+          const si = document.querySelector(`.work-start-input[data-day="${cb.dataset.day}"]`);
+          const ei = document.querySelector(`.work-end-input[data-day="${cb.dataset.day}"]`);
+          if (si && !si.value) si.value = '15:00';
+          if (ei && !ei.value) ei.value = '22:00';
+        }
+      }
+    });
+  });
+
   document.getElementById('devModeToggle').checked = s.devMode;
   document.getElementById('settingsOverlay').classList.remove('hidden');
 }
@@ -1527,6 +1631,18 @@ document.getElementById('saveSettingsBtn').addEventListener('click', () => {
   document.querySelectorAll('.hours-input').forEach(inp => {
     s.dailyHours[inp.dataset.day] = parseFloat(inp.value) || 0;
   });
+
+  // Work hours
+  if (!s.workHours) s.workHours = {};
+  document.querySelectorAll('.work-hours-enabled').forEach(cb => {
+    const day = cb.dataset.day;
+    const si  = document.querySelector(`.work-start-input[data-day="${day}"]`);
+    const ei  = document.querySelector(`.work-end-input[data-day="${day}"]`);
+    s.workHours[day] = (cb.checked && si?.value && ei?.value)
+      ? { start: si.value, end: ei.value }
+      : null;
+  });
+
   s.devMode = document.getElementById('devModeToggle').checked;
   saveSettings(s);
   closeSettings();

@@ -394,6 +394,48 @@
       </div>
 
       <div class="settings-section">
+        <h4 class="settings-heading">Work Time Window <span class="settings-optional">Optional</span></h4>
+        <p class="modal-hint">Set the hours you're actually free to study each day. Events during this window are automatically treated as blocked time. If your work window ends and you still have unfinished tasks, the schedule moves them to the next available day.</p>
+        <div class="work-hours-grid">
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Mon</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="mon" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="mon"><input type="time" class="work-start-input" data-day="mon" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="mon" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Tue</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="tue" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="tue"><input type="time" class="work-start-input" data-day="tue" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="tue" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Wed</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="wed" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="wed"><input type="time" class="work-start-input" data-day="wed" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="wed" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Thu</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="thu" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="thu"><input type="time" class="work-start-input" data-day="thu" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="thu" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Fri</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="fri" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="fri"><input type="time" class="work-start-input" data-day="fri" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="fri" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Sat</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="sat" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="sat"><input type="time" class="work-start-input" data-day="sat" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="sat" /></div>
+          </div>
+          <div class="work-hours-row">
+            <span class="work-hours-day-label">Sun</span>
+            <label class="work-hours-toggle-wrap"><input type="checkbox" class="work-hours-enabled" data-day="sun" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+            <div class="work-hours-times hidden" data-day="sun"><input type="time" class="work-start-input" data-day="sun" /><span class="work-hours-sep">to</span><input type="time" class="work-end-input" data-day="sun" /></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h4 class="settings-heading">Developer Mode</h4>
         <p class="modal-hint">After finishing a task, log how long it actually took. Unlocks a Stats tab in the Plan view.</p>
         <label class="toggle-switch">
