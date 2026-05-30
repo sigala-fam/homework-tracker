@@ -1348,6 +1348,17 @@ function renderLegend() {
       html += `<div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>`;
     }
   }
+  // Always show the marker key at the bottom of the legend
+  html += `
+    <div class="legend-section-label" style="margin-top:10px">Key</div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#6366f1"></div>
+      <span>Due that day</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot legend-dot-work" style="border-color:#6366f1"></div>
+      <span>Day to work on it</span>
+    </div>`;
   document.getElementById('calLegend').innerHTML = html;
 }
 

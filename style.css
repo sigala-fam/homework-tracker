@@ -859,6 +859,7 @@ body {
 .legend-section-label:first-child { margin-top: 0; }
 .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.legend-dot-work { background: transparent; border: 2px dashed currentColor; box-sizing: border-box; }
 
 .calendar-grid { padding: 14px; }
 .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 5px; }
