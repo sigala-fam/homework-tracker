@@ -897,47 +897,111 @@ function renderRankedList() {
 
 // ── Daily Schedule ────────────────────────────────────────
 function buildDailySchedule() {
-  const settings  = getSettings();
-  const dayKeys   = ['sun','mon','tue','wed','thu','fri','sat'];
-  const sMap      = subjectMap();
-  const evMap     = eventsByDay();
+  const settings   = getSettings();
+  const dayKeys    = ['sun','mon','tue','wed','thu','fri','sat'];
+  const sMap       = subjectMap();
+  const evMap      = eventsByDay();
   const incomplete = tasks.filter(t => !t.done && t.due);
   if (!incomplete.length) return [];
 
+  // Only schedule up to 75% of daily hours — leaves breathing room and accounts
+  // for the fact that people don't always do homework the moment they get home.
+  const BUFFER = 0.75;
+
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const todayStr = fmtDate(today);
+  const maxDue   = new Date(incomplete.reduce((m, t) => t.due > m ? t.due : m, todayStr) + 'T00:00:00');
+
+  // Build per-day info for every day from today → latest due date
+  const dayInfo = {};
+  for (let d = new Date(today); d <= maxDue; d.setDate(d.getDate() + 1)) {
+    const ds         = fmtDate(d);
+    const dayKey     = dayKeys[d.getDay()];
+    const hoursAvail = settings.dailyHours[dayKey] ?? 2;
+    const dayEvs     = evMap[ds] || [];
+    const eventMins  = dayEvs.reduce((s, e) => s + effectiveDuration(e), 0);
+    const rawAvail   = Math.max(0, hoursAvail * 60 - eventMins);
+    dayInfo[ds] = {
+      hoursAvail,
+      events: dayEvs,
+      eventMins,
+      availMins: rawAvail,
+      bufferMins: Math.floor(rawAvail * BUFFER), // soft cap
+      scheduledMins: 0,
+    };
+  }
+
+  // Sort: soonest due first, then highest priority score
   const scored = incomplete
     .map(t => ({ ...t, score: priorityScore(t, sMap[t.subject]), minsNeeded: t.estimatedMins || 60 }))
     .sort((a, b) => a.due.localeCompare(b.due) || b.score - a.score);
 
-  const today   = new Date(); today.setHours(0,0,0,0);
-  const maxDue  = new Date(scored.reduce((m, t) => t.due > m ? t.due : m, fmtDate(today)) + 'T00:00:00');
+  const taskDayMap = {}; // dateStr → task[]
+  const assigned   = new Set();
+
+  for (const t of scored) {
+    if (assigned.has(t.id)) continue;
+
+    // Due today: must schedule today no matter what (skip buffer)
+    if (t.due === todayStr) {
+      if (!taskDayMap[todayStr]) taskDayMap[todayStr] = [];
+      taskDayMap[todayStr].push(t);
+      dayInfo[todayStr].scheduledMins += t.minsNeeded;
+      assigned.add(t.id);
+      continue;
+    }
+
+    // Gather every day between today and due date
+    const dueDate  = new Date(t.due + 'T00:00:00');
+    const candidates = [];
+    for (let d = new Date(today); d <= dueDate; d.setDate(d.getDate() + 1)) {
+      const ds = fmtDate(d);
+      if (dayInfo[ds]) {
+        const remaining = dayInfo[ds].bufferMins - dayInfo[ds].scheduledMins;
+        candidates.push({ ds, remaining });
+      }
+    }
+
+    // Days that have enough buffer capacity for this whole task
+    const fittingDays = candidates.filter(c => c.remaining >= t.minsNeeded);
+
+    let chosenDay;
+    if (fittingDays.length > 0) {
+      // Load-balance: pick the day with the most remaining capacity.
+      // This naturally spreads tasks across free days instead of piling
+      // everything onto the earliest available slot.
+      chosenDay = fittingDays.reduce((best, c) => c.remaining > best.remaining ? c : best).ds;
+    } else {
+      // Nothing fits within the soft cap — pick whichever day has the most
+      // space left (last resort; may go over buffer slightly).
+      const withAny = candidates.filter(c => c.remaining > 0);
+      chosenDay = withAny.length > 0
+        ? withAny.reduce((best, c) => c.remaining > best.remaining ? c : best).ds
+        : t.due;
+    }
+
+    if (!taskDayMap[chosenDay]) taskDayMap[chosenDay] = [];
+    taskDayMap[chosenDay].push(t);
+    if (dayInfo[chosenDay]) dayInfo[chosenDay].scheduledMins += t.minsNeeded;
+    assigned.add(t.id);
+  }
+
+  // Build the final schedule in date order; skip fully empty days
   const schedule = [];
-  const assigned = new Set();
-
-  for (let d = new Date(today); d <= maxDue; d.setDate(d.getDate()+1)) {
-    const dateStr    = fmtDate(d);
-    const dayKey     = dayKeys[d.getDay()];
-    const hoursAvail = settings.dailyHours[dayKey] ?? 2;
-    const dayEvs     = evMap[dateStr] || [];
-    const eventMins  = dayEvs.reduce((sum, e) => sum + effectiveDuration(e), 0);
-    let availMins    = Math.max(0, hoursAvail * 60 - eventMins);
-    const dayTasks   = [];
-
-    // Tasks due today go first (must finish)
-    for (const t of scored) {
-      if (assigned.has(t.id)) continue;
-      if (t.due === dateStr) {
-        dayTasks.push(t); assigned.add(t.id); availMins -= t.minsNeeded;
-      }
+  for (const ds of Object.keys(dayInfo).sort()) {
+    const info      = dayInfo[ds];
+    const dayTasks  = (taskDayMap[ds] || []).sort((a, b) => b.score - a.score);
+    const totalMins = dayTasks.reduce((s, t) => s + t.minsNeeded, 0);
+    if (dayTasks.length > 0 || info.events.length > 0) {
+      schedule.push({
+        date: ds,
+        tasks: dayTasks,
+        events: info.events,
+        hoursAvail: info.hoursAvail,
+        totalMins,
+        eventMins: info.eventMins,
+      });
     }
-    // Fill remaining time with highest-priority tasks due later
-    for (const t of scored) {
-      if (assigned.has(t.id)) continue;
-      if (t.due > dateStr && availMins >= t.minsNeeded) {
-        dayTasks.push(t); assigned.add(t.id); availMins -= t.minsNeeded;
-      }
-    }
-
-    schedule.push({ date: dateStr, tasks: dayTasks, events: dayEvs, hoursAvail, totalMins: dayTasks.reduce((s,t) => s+t.minsNeeded, 0), eventMins });
   }
   return schedule;
 }
@@ -1183,9 +1247,11 @@ function renderMonthly() {
     <div class="cal-weekdays">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-weekday">${d}</div>`).join('')}</div>
     <div class="cal-days">
       ${days.map(({date,other})=>{
-        const taskItems = (tMap[date]||[]).map(t => ({
-          name: t.name, color: sMap[t.subject]?.color || '#aaa',
-        }));
+        const taskItems = (tMap[date]||[])
+          .sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]))
+          .map(t => ({
+            name: t.name, color: sMap[t.subject]?.color || '#aaa',
+          }));
         const eventItems = (evMap[date]||[]).map(e => ({
           name: e.title, color: eventColor(e),
         }));
@@ -1232,7 +1298,7 @@ function renderWeekly() {
   const rows = Array.from({length:7}, (_,i) => {
     const d = new Date(start); d.setDate(d.getDate()+i);
     const ds = fmtDate(d);
-    const dayTasks  = tMap[ds]  || [];
+    const dayTasks  = (tMap[ds] || []).sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]));
     const dayEvents = evMap[ds] || [];
     const clubEvs   = dayEvents.filter(e => e.category === 'club');
     const persEvs   = dayEvents.filter(e => e.category === 'personal');
@@ -1293,7 +1359,10 @@ function renderWeekly() {
 
 function showDayDetail(dateStr) {
   const sMap = subjectMap();
-  const dt   = tasks.filter(t => t.due === dateStr);
+  // Sort tasks by priority score so the calendar matches the ranked to-do list order
+  const dt   = tasks
+    .filter(t => t.due === dateStr)
+    .sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]));
   const de   = events.filter(e => e.date === dateStr);
 
   const taskHtml = dt.map(t => {
