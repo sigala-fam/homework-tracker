@@ -1116,6 +1116,16 @@ function buildDailySchedule() {
   return schedule;
 }
 
+// Returns a map of dateStr → task[] for the planned study days (from the schedule).
+// Used by the calendar to show "study day" markers distinct from "due date" markers.
+function buildWorkDayMap() {
+  const map = {};
+  buildDailySchedule().forEach(({ date, tasks }) => {
+    if (tasks.length) map[date] = tasks;
+  });
+  return map;
+}
+
 function renderDailySchedule() {
   const content  = document.getElementById('planContent');
   const sMap     = subjectMap();
@@ -1345,6 +1355,7 @@ function renderMonthly() {
   const grid  = document.getElementById('calendarGrid');
   const tMap  = tasksByDay();
   const evMap = eventsByDay();
+  const wMap  = buildWorkDayMap();
   const sMap  = subjectMap();
   const today = todayStr();
   const year  = calDate.getFullYear(), month = calDate.getMonth();
@@ -1359,24 +1370,31 @@ function renderMonthly() {
     <div class="cal-weekdays">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-weekday">${d}</div>`).join('')}</div>
     <div class="cal-days">
       ${days.map(({date,other})=>{
-        const taskItems = (tMap[date]||[])
+        // Due tasks: solid chip/dot
+        const dueItems = (tMap[date]||[])
           .sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]))
-          .map(t => ({
-            name: t.name, color: sMap[t.subject]?.color || '#aaa',
-          }));
+          .map(t => ({ name: t.name, color: sMap[t.subject]?.color || '#aaa', type: 'due' }));
+
+        // Study tasks: outline chip/dot — only when the study day ≠ due date
+        const workItems = (wMap[date]||[])
+          .filter(t => t.due !== date)
+          .map(t => ({ name: t.name, color: sMap[t.subject]?.color || '#aaa', type: 'work' }));
+
         const eventItems = (evMap[date]||[]).map(e => ({
-          name: e.title, color: eventColor(e),
+          name: e.title, color: eventColor(e), type: 'event',
         }));
-        const items = [...taskItems, ...eventItems];
+        const items = [...dueItems, ...workItems, ...eventItems];
 
         let innerHtml = '';
         if (items.length > 0 && items.length <= 3) {
-          innerHtml = `<div class="day-chips">${items.map(it =>
-            `<div class="day-chip" style="background:${it.color}" title="${escHtml(it.name)}">${escHtml(it.name)}</div>`
+          innerHtml = `<div class="day-chips">${items.map(it => it.type === 'work'
+            ? `<div class="day-chip day-chip-work" style="color:${it.color};border-color:${it.color}" title="Study: ${escHtml(it.name)}">✏ ${escHtml(it.name)}</div>`
+            : `<div class="day-chip" style="background:${it.color}" title="${escHtml(it.name)}">${escHtml(it.name)}</div>`
           ).join('')}</div>`;
         } else if (items.length > 3) {
-          innerHtml = `<div class="day-dots">${items.map(it =>
-            `<div class="day-dot" style="background:${it.color}" title="${escHtml(it.name)}"></div>`
+          innerHtml = `<div class="day-dots">${items.map(it => it.type === 'work'
+            ? `<div class="day-dot day-dot-work" style="border-color:${it.color}" title="Study: ${escHtml(it.name)}"></div>`
+            : `<div class="day-dot" style="background:${it.color}" title="${escHtml(it.name)}"></div>`
           ).join('')}</div>`;
         }
 
@@ -1402,6 +1420,7 @@ function renderWeekly() {
   const grid  = document.getElementById('calendarGrid');
   const tMap  = tasksByDay();
   const evMap = eventsByDay();
+  const wMap  = buildWorkDayMap();
   const sMap  = subjectMap();
   const today = todayStr();
   const start = weekStart(calDate);
@@ -1410,20 +1429,31 @@ function renderWeekly() {
   const rows = Array.from({length:7}, (_,i) => {
     const d = new Date(start); d.setDate(d.getDate()+i);
     const ds = fmtDate(d);
-    const dayTasks  = (tMap[ds] || []).sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]));
-    const dayEvents = evMap[ds] || [];
-    const clubEvs   = dayEvents.filter(e => e.category === 'club');
-    const persEvs   = dayEvents.filter(e => e.category === 'personal');
+    const dayTasks    = (tMap[ds] || []).sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]));
+    const workTasks   = (wMap[ds] || []).filter(t => t.due !== ds); // study-only (not due today)
+    const dayEvents   = evMap[ds] || [];
+    const clubEvs     = dayEvents.filter(e => e.category === 'club');
+    const persEvs     = dayEvents.filter(e => e.category === 'personal');
 
-    const hwHtml = dayTasks.length
-      ? dayTasks.map(t => {
-          const s = sMap[t.subject] || { color:'#aaa', label: t.subject };
-          return `<div class="weekly-item">
-            <div class="weekly-item-dot" style="background:${s.color}"></div>
-            <span class="weekly-item-name" title="${escHtml(t.name)}">${escHtml(t.name)}</span>
-            <span class="weekly-item-badge" style="background:${s.color}">${escHtml(s.label)}</span>
-          </div>`;
-        }).join('')
+    const hwHtml = (dayTasks.length || workTasks.length)
+      ? [
+          ...dayTasks.map(t => {
+            const s = sMap[t.subject] || { color:'#aaa', label: t.subject };
+            return `<div class="weekly-item">
+              <div class="weekly-item-dot" style="background:${s.color}"></div>
+              <span class="weekly-item-name" title="${escHtml(t.name)}">${escHtml(t.name)}</span>
+              <span class="weekly-item-badge" style="background:${s.color}">${escHtml(s.label)}</span>
+            </div>`;
+          }),
+          ...workTasks.map(t => {
+            const s = sMap[t.subject] || { color:'#aaa', label: t.subject };
+            return `<div class="weekly-item weekly-item-work">
+              <div class="weekly-item-dot weekly-item-dot-work" style="border-color:${s.color}"></div>
+              <span class="weekly-item-name" title="Study: ${escHtml(t.name)}">✏ ${escHtml(t.name)}</span>
+              <span class="weekly-item-badge weekly-item-badge-work" style="color:${s.color};border-color:${s.color}">${escHtml(s.label)}</span>
+            </div>`;
+          }),
+        ].join('')
       : `<span class="weekly-nothing">—</span>`;
 
     const clubHtml = clubEvs.length
@@ -1471,11 +1501,17 @@ function renderWeekly() {
 
 function showDayDetail(dateStr) {
   const sMap = subjectMap();
-  // Sort tasks by priority score so the calendar matches the ranked to-do list order
-  const dt   = tasks
+  const wMap = buildWorkDayMap();
+
+  // Tasks due today — sorted by priority
+  const dt = tasks
     .filter(t => t.due === dateStr)
     .sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]));
-  const de   = events.filter(e => e.date === dateStr);
+
+  // Tasks the scheduler says to work on today — but NOT due today
+  const dw = (wMap[dateStr] || []).filter(t => t.due !== dateStr);
+
+  const de = events.filter(e => e.date === dateStr);
 
   const taskHtml = dt.map(t => {
     const s    = sMap[t.subject] || { label: t.subject, color: '#aaa' };
@@ -1497,6 +1533,25 @@ function showDayDetail(dateStr) {
           <div class="detail-card-meta">${meta.join('')}</div>
           ${t.notes ? `<div class="detail-card-notes">${escHtml(t.notes)}</div>` : ''}
           ${subs.length ? `<div class="detail-card-subs">${subs.map(s => `<span style="opacity:${s.done?0.5:1}">${s.done?'✓':'○'} ${escHtml(s.text)}</span>`).join(' · ')}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Study plan cards — shown when the work day is different from the due date
+  const studyHtml = dw.map(t => {
+    const s = sMap[t.subject] || { label: t.subject, color: '#aaa' };
+    const meta = [];
+    meta.push(`<span class="detail-badge" style="border-left:3px solid ${s.color}">${escHtml(s.label)}</span>`);
+    meta.push(`<span class="detail-badge">📅 Due ${prettyDate(t.due)}</span>`);
+    if (t.estimatedMins) meta.push(`<span class="detail-badge">⏱ ${fmtMins(t.estimatedMins)}</span>`);
+    if (t.difficulty) meta.push(`<span class="detail-stars">${'★'.repeat(t.difficulty)}${'☆'.repeat(5-t.difficulty)}</span>`);
+    return `
+      <div class="detail-card detail-card-study">
+        <div class="detail-color-bar" style="background:${s.color}"></div>
+        <div class="detail-card-body">
+          <div class="detail-card-title">${escHtml(t.name)}</div>
+          <div class="detail-card-meta">${meta.join('')}</div>
+          ${t.notes ? `<div class="detail-card-notes">${escHtml(t.notes)}</div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -1526,8 +1581,21 @@ function showDayDetail(dateStr) {
       </div>`;
   }).join('');
 
+  // Combine with section labels when both "due" and "study" sections exist
+  let combinedHtml = '';
+  if (taskHtml && studyHtml) {
+    combinedHtml =
+      `<div class="detail-section-label">📅 Due today</div>${taskHtml}` +
+      `<div class="detail-section-label">✏ Study plan</div>${studyHtml}`;
+  } else if (studyHtml) {
+    combinedHtml = `<div class="detail-section-label">✏ Study plan</div>${studyHtml}`;
+  } else {
+    combinedHtml = taskHtml;
+  }
+  combinedHtml += eventHtml;
+
   document.getElementById('dayDetailTitle').textContent = prettyDate(dateStr);
-  document.getElementById('dayDetailTasks').innerHTML = (taskHtml + eventHtml) ||
+  document.getElementById('dayDetailTasks').innerHTML = combinedHtml ||
     `<div class="detail-empty">Nothing on this day.</div>`;
   document.getElementById('dayDetail').classList.remove('hidden');
 

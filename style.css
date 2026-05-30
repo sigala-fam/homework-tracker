@@ -941,6 +941,15 @@ body {
   transition: opacity 0.15s;
 }
 .detail-card:hover .detail-event-actions { opacity: 1; }
+/* Study-plan card: slightly muted vs "due today" card */
+.detail-card-study { opacity: 0.88; }
+.detail-card-study .detail-card-title { color: var(--text-2); }
+/* Section labels that separate "Due today" from "Study plan" in day detail */
+.detail-section-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
 .detail-event-btn {
   background: none; border: none; cursor: pointer; font-size: 13px;
   padding: 3px 5px; border-radius: 5px; color: var(--muted);
@@ -1358,6 +1367,19 @@ body {
   max-width: 100%;
   line-height: 1.5;
 }
+/* Study-day chip: dashed outline, no fill */
+.day-chip-work {
+  background: transparent;
+  border: 1.5px dashed currentColor;
+  line-height: 1.3;
+  padding: 0 4px;
+}
+/* Study-day dot: outline instead of filled */
+.day-dot-work {
+  background: transparent;
+  border: 2px dashed currentColor;
+  box-sizing: border-box;
+}
 
 /* ── Weekly 4-column grid ── */
 .weekly-table {
@@ -1413,6 +1435,10 @@ body {
   color: #fff; white-space: nowrap; flex-shrink: 0;
 }
 .weekly-nothing { font-size: 11px; color: var(--muted); font-style: italic; }
+/* Study-day rows in weekly view */
+.weekly-item-work { opacity: 0.75; }
+.weekly-item-dot-work { background: transparent; border: 2px dashed currentColor; box-sizing: border-box; }
+.weekly-item-badge-work { background: transparent; border: 1.5px dashed currentColor; }
 
 /* ══════════════════════════════
    CUSTOMIZE PANEL
