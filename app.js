@@ -247,6 +247,18 @@ document.getElementById('editNameBtn').addEventListener('click', async () => {
 });
 
 // ── Status Line ───────────────────────────────────────────
+// Returns true only if today's work window has already ended.
+// If no work window is set for today, returns false (never "past the window").
+function isTodayWindowPassed() {
+  const s    = getSettings();
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  const wh   = s.workHours?.[days[new Date().getDay()]] || null;
+  if (!wh) return false;
+  const [eh, em] = wh.end.split(':').map(Number);
+  const now = new Date();
+  return (now.getHours() * 60 + now.getMinutes()) >= (eh * 60 + em);
+}
+
 function renderStatusLine() {
   const el = document.getElementById('statusLine');
   if (!el) return;
@@ -294,13 +306,22 @@ function renderStatusLine() {
   let msg;
   let urgent = false;
   const tw = (n, w) => `<strong>${n}</strong>&nbsp;${n === 1 ? w : w + 's'}`;
+  const windowPassed = isTodayWindowPassed();
 
-  if (overdue.length > 0 || dueToday.length > 0) {
+  if (overdue.length > 0) {
+    // Overdue tasks are always urgent, no matter the time
     urgent = true;
-    const parts = [];
-    if (overdue.length > 0)   parts.push(`${tw(overdue.length,  'task')} overdue`);
-    if (dueToday.length > 0)  parts.push(`${tw(dueToday.length, 'task')} due today`);
+    const parts = [`${tw(overdue.length, 'task')} overdue`];
+    // Also mention due-today count in the same urgent message
+    if (dueToday.length > 0) parts.push(`${tw(dueToday.length, 'task')} due today`);
     msg = `🚨 ${parts.join(' · ')}`;
+  } else if (dueToday.length > 0 && windowPassed) {
+    // Due today AND the work window has ended → urgent
+    urgent = true;
+    msg = `🚨 ${tw(dueToday.length, 'task')} due today`;
+  } else if (dueToday.length > 0) {
+    // Due today but there's still time in the work window → calm gray
+    msg = `${tw(dueToday.length, 'task')} due today`;
   } else if (weekTasks.length > 0) {
     msg = `${tw(weekTasks.length, 'task')} this week`;
   } else if (monthTasks.length > 0) {
