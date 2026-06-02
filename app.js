@@ -271,8 +271,9 @@ function renderStatusLine() {
 
   const incomplete = tasks.filter(t => !t.done && t.due);
 
-  // Tasks: priority tiers (tasks > events, today > week > month)
-  const todayTasks = incomplete.filter(t => daysUntil(t.due) <= 0);           // due today + overdue
+  // Split urgent tasks into overdue vs due today
+  const overdue    = incomplete.filter(t => daysUntil(t.due) < 0);
+  const dueToday   = incomplete.filter(t => daysUntil(t.due) === 0);
   const weekTasks  = incomplete.filter(t => {
     const d = new Date(t.due + 'T00:00:00');
     return d > todayDate && d < weekEnd;
@@ -291,10 +292,15 @@ function renderStatusLine() {
   });
 
   let msg;
+  let urgent = false;
   const tw = (n, w) => `<strong>${n}</strong>&nbsp;${n === 1 ? w : w + 's'}`;
 
-  if (todayTasks.length > 0) {
-    msg = `${tw(todayTasks.length, 'task')} due today`;
+  if (overdue.length > 0 || dueToday.length > 0) {
+    urgent = true;
+    const parts = [];
+    if (overdue.length > 0)   parts.push(`${tw(overdue.length,  'task')} overdue`);
+    if (dueToday.length > 0)  parts.push(`${tw(dueToday.length, 'task')} due today`);
+    msg = `🚨 ${parts.join(' · ')}`;
   } else if (weekTasks.length > 0) {
     msg = `${tw(weekTasks.length, 'task')} this week`;
   } else if (monthTasks.length > 0) {
@@ -314,7 +320,7 @@ function renderStatusLine() {
   el.innerHTML =
     `<span class="status-item">${greetingText}</span>` +
     `<span class="status-dot"></span>` +
-    `<span class="status-item">${msg}</span>`;
+    `<span class="status-item${urgent ? ' status-urgent' : ''}">${msg}</span>`;
 }
 
 // ── View Switching ────────────────────────────────────────
@@ -1384,7 +1390,7 @@ function renderMonthly() {
         // Due tasks: solid chip/dot
         const dueItems = (tMap[date]||[])
           .sort((a, b) => priorityScore(b, sMap[b.subject]) - priorityScore(a, sMap[a.subject]))
-          .map(t => ({ name: t.name, color: sMap[t.subject]?.color || '#aaa', type: 'due' }));
+          .map(t => ({ name: t.name, color: sMap[t.subject]?.color || '#aaa', type: 'due', done: t.done }));
 
         // Study tasks: outline chip/dot — only when the study day ≠ due date
         const workItems = (wMap[date]||[])
@@ -1398,15 +1404,21 @@ function renderMonthly() {
 
         let innerHtml = '';
         if (items.length > 0 && items.length <= 3) {
-          innerHtml = `<div class="day-chips">${items.map(it => it.type === 'work'
-            ? `<div class="day-chip day-chip-work" style="color:${it.color};border-color:${it.color}" title="Study: ${escHtml(it.name)}">✏ ${escHtml(it.name)}</div>`
-            : `<div class="day-chip" style="background:${it.color}" title="${escHtml(it.name)}">${escHtml(it.name)}</div>`
-          ).join('')}</div>`;
+          innerHtml = `<div class="day-chips">${items.map(it => {
+            if (it.type === 'work')
+              return `<div class="day-chip day-chip-work" style="color:${it.color};border-color:${it.color}" title="Study: ${escHtml(it.name)}">✏ ${escHtml(it.name)}</div>`;
+            if (it.done)
+              return `<div class="day-chip day-chip-done" style="background:${it.color}" title="Completed: ${escHtml(it.name)}">✓ ${escHtml(it.name)}</div>`;
+            return `<div class="day-chip" style="background:${it.color}" title="${escHtml(it.name)}">${escHtml(it.name)}</div>`;
+          }).join('')}</div>`;
         } else if (items.length > 3) {
-          innerHtml = `<div class="day-dots">${items.map(it => it.type === 'work'
-            ? `<div class="day-dot day-dot-work" style="border-color:${it.color}" title="Study: ${escHtml(it.name)}"></div>`
-            : `<div class="day-dot" style="background:${it.color}" title="${escHtml(it.name)}"></div>`
-          ).join('')}</div>`;
+          innerHtml = `<div class="day-dots">${items.map(it => {
+            if (it.type === 'work')
+              return `<div class="day-dot day-dot-work" style="border-color:${it.color}" title="Study: ${escHtml(it.name)}"></div>`;
+            if (it.done)
+              return `<div class="day-dot day-dot-done" style="border-color:${it.color}" title="✓ Completed: ${escHtml(it.name)}"></div>`;
+            return `<div class="day-dot" style="background:${it.color}" title="${escHtml(it.name)}"></div>`;
+          }).join('')}</div>`;
         }
 
         return `<div class="cal-day ${other?'other-month':''} ${date===today?'today':''} ${date===selectedDay?'selected':''}" data-date="${date}">
@@ -1450,6 +1462,13 @@ function renderWeekly() {
       ? [
           ...dayTasks.map(t => {
             const s = sMap[t.subject] || { color:'#aaa', label: t.subject };
+            if (t.done) {
+              return `<div class="weekly-item weekly-item-done">
+                <div class="weekly-item-dot weekly-item-dot-done" style="border-color:${s.color}"></div>
+                <span class="weekly-item-name" title="Completed: ${escHtml(t.name)}">✓ ${escHtml(t.name)}</span>
+                <span class="weekly-item-badge" style="background:${s.color}">${escHtml(s.label)}</span>
+              </div>`;
+            }
             return `<div class="weekly-item">
               <div class="weekly-item-dot" style="background:${s.color}"></div>
               <span class="weekly-item-name" title="${escHtml(t.name)}">${escHtml(t.name)}</span>
@@ -1537,8 +1556,8 @@ function showDayDetail(dateStr) {
     if (subs.length) meta.push(`<span class="detail-badge">☰ ${subsDone}/${subs.length} steps</span>`);
 
     return `
-      <div class="detail-card">
-        <div class="detail-color-bar" style="background:${s.color}"></div>
+      <div class="detail-card${t.done ? ' detail-card-done' : ''}">
+        <div class="detail-color-bar" style="background:${t.done ? '#16a34a' : s.color}"></div>
         <div class="detail-card-body">
           <div class="detail-card-title ${t.done ? 'done-title' : ''}">${escHtml(t.name)}</div>
           <div class="detail-card-meta">${meta.join('')}</div>

@@ -359,6 +359,10 @@ body {
 }
 .status-item strong { color: var(--text-2); font-weight: 700; }
 .status-item.warn strong { color: #B45309; }
+.status-item.status-urgent { color: #dc2626; font-weight: 600; }
+.status-item.status-urgent strong { color: #b91c1c; }
+[data-theme="dark"] .status-item.status-urgent { color: #f87171; }
+[data-theme="dark"] .status-item.status-urgent strong { color: #fca5a5; }
 .status-dot {
   width: 5px; height: 5px;
   border-radius: 50%;
@@ -945,6 +949,8 @@ body {
 /* Study-plan card: slightly muted vs "due today" card */
 .detail-card-study { opacity: 0.88; }
 .detail-card-study .detail-card-title { color: var(--text-2); }
+.detail-card-done { background: rgba(22, 163, 74, 0.06); }
+[data-theme="dark"] .detail-card-done { background: rgba(22, 163, 74, 0.10); }
 /* Section labels that separate "Due today" from "Study plan" in day detail */
 .detail-section-label {
   font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
@@ -1381,6 +1387,17 @@ body {
   border: 2px dashed currentColor;
   box-sizing: border-box;
 }
+/* Completed task chip: strikethrough, faded */
+.day-chip-done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+/* Completed task dot: hollow circle */
+.day-dot-done {
+  background: transparent;
+  border: 2px solid;
+  box-sizing: border-box;
+}
 
 /* ── Weekly 4-column grid ── */
 .weekly-table {
@@ -1440,6 +1457,9 @@ body {
 .weekly-item-work { opacity: 0.75; }
 .weekly-item-dot-work { background: transparent; border: 2px dashed currentColor; box-sizing: border-box; }
 .weekly-item-badge-work { background: transparent; border: 1.5px dashed currentColor; }
+.weekly-item-done { opacity: 0.6; }
+.weekly-item-done .weekly-item-name { text-decoration: line-through; }
+.weekly-item-dot-done { background: transparent; border: 2px solid currentColor; box-sizing: border-box; }
 
 /* ══════════════════════════════
    CUSTOMIZE PANEL
