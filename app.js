@@ -1349,10 +1349,14 @@ function renderLegend() {
 
   function makeSection(id, label, itemsHtml) {
     const collapsed = collapsedLegendSections.has(id);
+    const count = (itemsHtml.match(/class="legend-item"/g) || []).length;
     return `
-      <button class="legend-section-toggle" data-section="${id}">
-        <span>${escHtml(label)}</span>
-        <span class="legend-chevron">${collapsed ? '▸' : '▾'}</span>
+      <button class="legend-section-toggle${collapsed ? ' is-collapsed' : ''}" data-section="${id}">
+        <span class="legend-toggle-label">${escHtml(label)}</span>
+        <span class="legend-toggle-right">
+          ${collapsed ? `<span class="legend-count">${count}</span>` : ''}
+          <span class="legend-chevron"></span>
+        </span>
       </button>
       ${collapsed ? '' : `<div class="legend-items-group">${itemsHtml}</div>`}`;
   }

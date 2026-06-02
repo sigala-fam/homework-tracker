@@ -862,15 +862,20 @@ body {
 .cal-legend { display: flex; flex-direction: column; gap: 0; }
 .legend-section-toggle {
   display: flex; justify-content: space-between; align-items: center;
-  width: 100%; background: none; border: none; padding: 0; cursor: pointer;
+  width: 100%; background: none; border: none;
+  border-top: 1px solid var(--border);
+  padding: 8px 0 4px; margin: 0; cursor: pointer;
   font-size: 10px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 0.6px; color: var(--muted); margin-top: 0; margin-bottom: 4px;
+  letter-spacing: 0.6px; color: var(--muted);
 }
-.legend-items-group + .legend-section-toggle,
-.legend-section-toggle + .legend-section-toggle { margin-top: 10px; }
+.cal-legend > .legend-section-toggle:first-child { border-top: none; padding-top: 0; }
 .legend-section-toggle:hover { color: var(--text-2); }
-.legend-chevron { font-size: 9px; opacity: 0.6; margin-left: 4px; }
-.legend-items-group { display: flex; flex-direction: column; gap: 5px; }
+.legend-toggle-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; text-align: left; }
+.legend-toggle-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; margin-left: 6px; }
+.legend-count { font-size: 9px; font-weight: 700; background: var(--surface-3); color: var(--muted); padding: 1px 5px; border-radius: 10px; line-height: 1.4; }
+.legend-chevron { width: 6px; height: 6px; flex-shrink: 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform 0.2s; }
+.legend-section-toggle.is-collapsed .legend-chevron { transform: rotate(-45deg); }
+.legend-items-group { display: flex; flex-direction: column; gap: 5px; padding-bottom: 4px; }
 .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .legend-dot-work { background: transparent; border: 2px dashed currentColor; box-sizing: border-box; }
