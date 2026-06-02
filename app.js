@@ -65,6 +65,7 @@ let editingEventId  = null;
 let prefilterDay    = null;
 let pendingReflectId  = null;  // task id waiting for reflection
 const expandedSubtasks = new Set(); // task IDs with checklist panel open
+const collapsedLegendSections = new Set(); // section IDs the user has folded in the legend
 
 // ── Persist (Firestore) ───────────────────────────────────
 function userDocRef() { return doc(db, 'users', currentUser.uid); }
@@ -1344,49 +1345,61 @@ function renderCalendar() {
 }
 
 function renderLegend() {
+  const container = document.getElementById('calLegend');
+
+  function makeSection(id, label, itemsHtml) {
+    const collapsed = collapsedLegendSections.has(id);
+    return `
+      <button class="legend-section-toggle" data-section="${id}">
+        <span>${escHtml(label)}</span>
+        <span class="legend-chevron">${collapsed ? '▸' : '▾'}</span>
+      </button>
+      ${collapsed ? '' : `<div class="legend-items-group">${itemsHtml}</div>`}`;
+  }
+
   let html = '';
+
   columns.forEach(col => {
     const colSubjects = subjects.filter(s => s.day === col.id);
     if (!colSubjects.length) return;
-    html += `<div class="legend-section-label">${escHtml(col.label)}</div>`;
-    html += colSubjects.map(s =>
+    html += makeSection(`col-${col.id}`, col.label, colSubjects.map(s =>
       `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div><span>${escHtml(s.label)}</span></div>`
-    ).join('');
+    ).join(''));
   });
-  // Subjects not assigned to any column
+
   const unassigned = subjects.filter(s => !columns.find(c => c.id === s.day));
   if (unassigned.length) {
-    html += `<div class="legend-section-label">Other</div>`;
-    html += unassigned.map(s =>
+    html += makeSection('other', 'Other', unassigned.map(s =>
       `<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div><span>${escHtml(s.label)}</span></div>`
-    ).join('');
+    ).join(''));
   }
+
   const clubMap = {};
   events.filter(e => e.category === 'club' && e.club).forEach(e => {
     if (!clubMap[e.club]) clubMap[e.club] = eventColor(e);
   });
   const hasPersonal = events.some(e => e.category === 'personal');
   if (Object.keys(clubMap).length || hasPersonal) {
-    html += `<div class="legend-section-label">Events</div>`;
-    Object.entries(clubMap).forEach(([name, color]) => {
-      html += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div><span>${escHtml(name)}</span></div>`;
-    });
-    if (hasPersonal) {
-      html += `<div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>`;
-    }
+    let evHtml = Object.entries(clubMap).map(([name, color]) =>
+      `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div><span>${escHtml(name)}</span></div>`
+    ).join('');
+    if (hasPersonal) evHtml += `<div class="legend-item"><div class="legend-dot" style="background:${PERSONAL_COLOR}"></div><span>Personal</span></div>`;
+    html += makeSection('events', 'Events', evHtml);
   }
-  // Always show the marker key at the bottom of the legend
-  html += `
-    <div class="legend-section-label" style="margin-top:10px">Key</div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#6366f1"></div>
-      <span>Due that day</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-dot legend-dot-work" style="border-color:#6366f1"></div>
-      <span>Day to work on it</span>
-    </div>`;
-  document.getElementById('calLegend').innerHTML = html;
+
+  html += makeSection('key', 'Key', `
+    <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div><span>Due that day</span></div>
+    <div class="legend-item"><div class="legend-dot legend-dot-work" style="border-color:#6366f1"></div><span>Day to work on it</span></div>`);
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.legend-section-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.section;
+      collapsedLegendSections.has(id) ? collapsedLegendSections.delete(id) : collapsedLegendSections.add(id);
+      renderLegend();
+    });
+  });
 }
 
 function renderMonthly() {
