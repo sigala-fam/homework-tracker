@@ -180,9 +180,11 @@ function renderProfileGreeting() {
 function openProfileDropdown() {
   renderProfileGreeting();
   document.getElementById('profileDropdown').classList.remove('hidden');
+  document.getElementById('profileAvatarBtn').setAttribute('aria-expanded', 'true');
 }
 function closeProfileDropdown() {
   document.getElementById('profileDropdown').classList.add('hidden');
+  document.getElementById('profileAvatarBtn').setAttribute('aria-expanded', 'false');
 }
 
 document.getElementById('profileAvatarBtn').addEventListener('click', e => {

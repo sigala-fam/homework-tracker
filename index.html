@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TaskNest</title>
+  <meta name="description" content="TaskNest — a personal homework and task tracker for students. Organize assignments, track deadlines, and plan your study schedule." />
+  <title>TaskNest — Homework Tracker</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23A855F7'/><stop offset='100%25' stop-color='%23EC4899'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><polyline points='22,58 42,78 78,28' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,7 +16,7 @@
   <!-- ── Login Screen ── -->
   <div id="loginOverlay" class="login-overlay">
     <div class="login-card">
-      <div class="login-logo-icon">
+      <div class="login-logo-icon" aria-hidden="true">
         <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
           <polyline points="6,22 16,32 34,10" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -48,6 +49,7 @@
       </div>
 
       <p id="loginError" class="login-error hidden"></p>
+      <p class="login-privacy">Your tasks are saved privately to your account via Firebase. We never share or sell your data.</p>
     </div>
   </div>
 
@@ -97,7 +99,7 @@
 
       <!-- New single profile button -->
       <div class="profile-menu-wrap" id="profileMenuWrap">
-        <button class="profile-avatar-btn" id="profileAvatarBtn" title="Profile &amp; Settings">
+        <button class="profile-avatar-btn" id="profileAvatarBtn" title="Profile &amp; Settings" aria-label="Profile &amp; Settings" aria-haspopup="true" aria-expanded="false">
           <img id="profileAvatarImg" alt="avatar" />
           <span id="profileAvatarInitial">?</span>
         </button>
@@ -162,7 +164,7 @@
       <div id="dayDetail" class="day-detail hidden">
         <div class="day-detail-header">
           <span id="dayDetailTitle"></span>
-          <button id="closeDayDetail">✕</button>
+          <button id="closeDayDetail" aria-label="Close">✕</button>
         </div>
         <div id="dayDetailTasks"></div>
       </div>
@@ -198,7 +200,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3>Add a Task</h3>
-        <button class="modal-close" id="closeModal">✕</button>
+        <button class="modal-close" id="closeModal" aria-label="Close">✕</button>
       </div>
       <form id="taskForm" class="task-form">
         <div class="form-group">
@@ -260,7 +262,7 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <h3>Manage Classes &amp; Columns</h3>
-        <button class="modal-close" id="closeClasses">✕</button>
+        <button class="modal-close" id="closeClasses" aria-label="Close">✕</button>
       </div>
 
       <!-- Columns section -->
@@ -300,7 +302,7 @@
     <div class="modal modal-sm">
       <div class="modal-header">
         <h3>Add an Event</h3>
-        <button class="modal-close" id="closeEvent">✕</button>
+        <button class="modal-close" id="closeEvent" aria-label="Close">✕</button>
       </div>
       <form id="eventForm" class="task-form">
         <div class="form-group">
@@ -376,7 +378,7 @@
     <div class="modal">
       <div class="modal-header">
         <h3>Settings</h3>
-        <button class="modal-close" id="closeSettings">✕</button>
+        <button class="modal-close" id="closeSettings" aria-label="Close">✕</button>
       </div>
 
       <div class="settings-section">
@@ -457,7 +459,7 @@
     <div class="modal modal-sm">
       <div class="modal-header">
         <h3>Task Complete! 🎉</h3>
-        <button class="modal-close" id="closeReflection">✕</button>
+        <button class="modal-close" id="closeReflection" aria-label="Close">✕</button>
       </div>
       <p class="reflection-name" id="reflectionTaskName"></p>
       <form id="reflectionForm" class="task-form">
@@ -491,7 +493,7 @@
   <div class="customize-panel hidden" id="customizePanel">
     <div class="customize-panel-hd">
       <span>🎨 Customize</span>
-      <button class="customize-close" id="closeCustomizePanel">✕</button>
+      <button class="customize-close" id="closeCustomizePanel" aria-label="Close">✕</button>
     </div>
 
     <!-- Background -->
