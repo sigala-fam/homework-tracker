@@ -400,11 +400,12 @@ body {
   width: 310px;
   flex-shrink: 0;
   background: var(--col-bg);
-  background: color-mix(in srgb, var(--col-tint, transparent) 11%, var(--col-bg));
+  background: color-mix(in srgb, var(--col-tint, transparent) 18%, var(--col-bg));
   border-radius: var(--radius);
+  border-top: 3px solid var(--col-accent, transparent);
   display: flex;
   flex-direction: column;
-  transition: background 0.4s;
+  transition: background 0.4s, border-color 0.4s;
 }
 
 .column-header {
