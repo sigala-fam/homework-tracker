@@ -385,7 +385,7 @@ function renderBoard() {
       <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)}">
         <div class="column-header">
           <div class="column-title-row">
-            <span class="day-pill" style="background:${col.color}">${escHtml(initial)}</span>
+            <span class="day-pill day-pill-btn" data-id="${col.id}" style="background:${col.color}" title="Click to change color">${escHtml(initial)}</span>
             <h2 class="column-title">${escHtml(col.label)}</h2>
             <div class="column-header-actions">
               <button class="column-header-btn customize-col-color-btn" data-id="${col.id}" title="Change color" style="background:${col.color}"></button>
@@ -414,6 +414,9 @@ function renderBoard() {
     });
   });
 
+  container.querySelectorAll('.day-pill-btn').forEach(pill =>
+    pill.addEventListener('click', () => openColumnMainColorPicker(pill.dataset.id, pill))
+  );
   container.querySelectorAll('.customize-col-color-btn').forEach(btn =>
     btn.addEventListener('click', () => openColumnColorPicker(btn.dataset.id, btn))
   );
@@ -2345,6 +2348,55 @@ document.querySelectorAll('.customize-font-pill').forEach(pill =>
 // Close panel
 document.getElementById('openCustomize').addEventListener('click', toggleCustomizeMode);
 document.getElementById('closeCustomizePanel').addEventListener('click', toggleCustomizeMode);
+
+// Pill color picker — changes the main accent color (pill + top border)
+function openColumnMainColorPicker(colId, pillEl) {
+  const col = columns.find(c => c.id === colId);
+  if (!col) return;
+
+  document.querySelectorAll('.col-tint-popup').forEach(p => p.remove());
+
+  const colEl = pillEl.closest('.board-column');
+  const popup = document.createElement('div');
+  popup.className = 'col-tint-popup';
+  popup.innerHTML = `
+    <div class="col-tint-popup-label">Column color</div>
+    <input type="color" class="col-tint-input" value="${col.color}" />
+  `;
+
+  const rect = pillEl.getBoundingClientRect();
+  popup.style.top  = (rect.bottom + 8) + 'px';
+  popup.style.left = rect.left + 'px';
+  document.body.appendChild(popup);
+
+  const colorInput = popup.querySelector('.col-tint-input');
+
+  colorInput.addEventListener('input', e => {
+    const c = e.target.value;
+    col.color = c;
+    col.tint  = undefined;
+    pillEl.style.background = c;
+    const swatchBtn = colEl?.querySelector('.customize-col-color-btn');
+    if (swatchBtn) swatchBtn.style.background = c;
+    if (colEl) {
+      colEl.style.setProperty('--col-accent', c);
+      colEl.style.setProperty('--col-tint', c);
+    }
+  });
+
+  colorInput.addEventListener('change', () => saveColumns());
+
+  function onOutsideClick(e) {
+    if (!popup.contains(e.target) && e.target !== pillEl) {
+      popup.remove();
+      saveColumns();
+      renderBoard();
+      if (activeView === 'calendar') renderLegend();
+      document.removeEventListener('mousedown', onOutsideClick, true);
+    }
+  }
+  setTimeout(() => document.addEventListener('mousedown', onOutsideClick, true), 0);
+}
 
 // Column color picker — visible popup with a real color input + reset button
 function openColumnColorPicker(colId, swatchBtn) {

@@ -421,6 +421,14 @@ body {
   display: flex; align-items: center; justify-content: center;
   color: #fff; flex-shrink: 0;
 }
+.day-pill-btn {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.day-pill-btn:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.55);
+}
 .column-title { font-size: 17px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
 .column-subtitle { font-size: 11px; color: var(--muted); line-height: 1.4; padding-left: 2px; }
 
