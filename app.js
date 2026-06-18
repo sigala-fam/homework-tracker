@@ -1680,8 +1680,16 @@ function showDayDetail(dateStr) {
 function deleteEvent(id) {
   const ev = events.find(e => e.id === id);
   if (!ev) return;
-  if (!confirm(`Delete "${ev.title}"?`)) return;
-  events = events.filter(e => e.id !== id);
+  if (ev.recurringGroupId) {
+    const groupEvents = events.filter(e => e.recurringGroupId === ev.recurringGroupId);
+    const deleteAll = confirm(`"${ev.title}" is part of a repeating series (${groupEvents.length} events total).\n\nPress OK to delete all ${groupEvents.length} events.\nPress Cancel to delete just this one.`);
+    events = deleteAll
+      ? events.filter(e => e.recurringGroupId !== ev.recurringGroupId)
+      : events.filter(e => e.id !== id);
+  } else {
+    if (!confirm(`Delete "${ev.title}"?`)) return;
+    events = events.filter(e => e.id !== id);
+  }
   saveEvents();
   renderCalendar();
   if (selectedDay) showDayDetail(selectedDay);
@@ -1720,6 +1728,17 @@ function openEditEvent(id) {
   }
 
   document.querySelector('#eventOverlay .modal-header h3').textContent = 'Edit Event';
+  document.getElementById('eventRepeatGroup').classList.add('hidden');
+  document.getElementById('eventRepeatConsecutiveGroup').classList.add('hidden');
+  document.getElementById('eventRepeatWeeklyGroup').classList.add('hidden');
+  const seriesNote = document.getElementById('eventSeriesNote');
+  if (ev.recurringGroupId) {
+    const groupCount = events.filter(e => e.recurringGroupId === ev.recurringGroupId).length;
+    seriesNote.textContent = `🔁 This is one event in a repeating series (${groupCount} total). Changes here only apply to this date.`;
+    seriesNote.classList.remove('hidden');
+  } else {
+    seriesNote.classList.add('hidden');
+  }
   document.getElementById('eventOverlay').classList.remove('hidden');
   document.getElementById('eventTitle').focus();
 }
@@ -2062,6 +2081,11 @@ function closeEvent() {
   customInput.classList.add('hidden');
   document.getElementById('eventDurationHours').value = '';
   document.getElementById('eventDurationMins').value  = '';
+  document.getElementById('eventRepeat').value = 'none';
+  document.getElementById('eventRepeatGroup').classList.remove('hidden');
+  document.getElementById('eventRepeatConsecutiveGroup').classList.add('hidden');
+  document.getElementById('eventRepeatWeeklyGroup').classList.add('hidden');
+  document.getElementById('eventSeriesNote').classList.add('hidden');
 }
 
 document.getElementById('openEvent').addEventListener('click', () => openEvent());
@@ -2071,6 +2095,11 @@ document.getElementById('eventOverlay').addEventListener('click', e => { if (e.t
 
 document.getElementById('eventCategory').addEventListener('change', e => {
   document.getElementById('clubGroup').classList.toggle('hidden', e.target.value !== 'club');
+});
+
+document.getElementById('eventRepeat').addEventListener('change', e => {
+  document.getElementById('eventRepeatConsecutiveGroup').classList.toggle('hidden', e.target.value !== 'consecutive');
+  document.getElementById('eventRepeatWeeklyGroup').classList.toggle('hidden', e.target.value !== 'weekly');
 });
 
 document.getElementById('eventDuration').addEventListener('change', e => {
@@ -2105,7 +2134,32 @@ document.getElementById('eventForm').addEventListener('submit', e => {
     const idx = events.findIndex(e => e.id === editingEventId);
     if (idx !== -1) events[idx] = { ...events[idx], title, date, startTime, endTime, category, club, color, durationMins: duration, notes };
   } else {
-    events.push({ id: genId(), title, date, startTime, endTime, category, club, color, durationMins: duration, notes });
+    const repeatType = document.getElementById('eventRepeat').value;
+    const baseEvent  = { title, startTime, endTime, category, club, color, durationMins: duration, notes };
+    const datesToAdd = [];
+
+    if (repeatType === 'consecutive') {
+      const extra = parseInt(document.getElementById('eventRepeatDays').value) || 1;
+      for (let i = 0; i <= extra; i++) {
+        const d = new Date(date + 'T00:00:00');
+        d.setDate(d.getDate() + i);
+        datesToAdd.push(fmtDate(d));
+      }
+    } else if (repeatType === 'weekly') {
+      const endStr = document.getElementById('eventRepeatEnd').value;
+      if (!endStr) { document.getElementById('eventRepeatEnd').focus(); return; }
+      const endDate = new Date(endStr + 'T00:00:00');
+      for (let d = new Date(date + 'T00:00:00'); d <= endDate; d.setDate(d.getDate() + 7)) {
+        datesToAdd.push(fmtDate(new Date(d)));
+      }
+    } else {
+      datesToAdd.push(date);
+    }
+
+    const groupId = datesToAdd.length > 1 ? genId() : null;
+    datesToAdd.forEach(d => {
+      events.push({ id: genId(), ...baseEvent, date: d, ...(groupId ? { recurringGroupId: groupId } : {}) });
+    });
   }
   const wasEditing = !!editingEventId;
   saveEvents();

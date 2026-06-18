@@ -304,6 +304,7 @@
         <h3>Add an Event</h3>
         <button class="modal-close" id="closeEvent" aria-label="Close">✕</button>
       </div>
+      <p id="eventSeriesNote" class="event-series-note hidden"></p>
       <form id="eventForm" class="task-form">
         <div class="form-group">
           <label for="eventTitle">What's happening?</label>
@@ -364,6 +365,22 @@
         <div class="form-group">
           <label for="eventNotes">Notes (optional)</label>
           <input type="text" id="eventNotes" placeholder="Any details..." />
+        </div>
+        <div class="form-group" id="eventRepeatGroup">
+          <label for="eventRepeat">Repeat</label>
+          <select id="eventRepeat">
+            <option value="none">Just this day</option>
+            <option value="consecutive">Multiple days in a row</option>
+            <option value="weekly">Every week on the same day</option>
+          </select>
+        </div>
+        <div id="eventRepeatConsecutiveGroup" class="form-group hidden">
+          <label for="eventRepeatDays">How many extra days? <span style="font-weight:400;color:var(--muted)">(e.g. 2 = this day + the next 2)</span></label>
+          <input type="number" id="eventRepeatDays" min="1" max="30" value="1" style="width:80px" />
+        </div>
+        <div id="eventRepeatWeeklyGroup" class="form-group hidden">
+          <label for="eventRepeatEnd">Repeat every week until</label>
+          <input type="date" id="eventRepeatEnd" />
         </div>
         <div class="form-actions">
           <button type="button" class="btn-cancel" id="cancelEvent">Cancel</button>
