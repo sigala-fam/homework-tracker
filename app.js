@@ -1753,6 +1753,7 @@ document.getElementById('calNext').addEventListener('click', () => calNav(1));
 document.getElementById('btnMonthly').addEventListener('click', () => { calView='monthly'; document.getElementById('btnMonthly').classList.add('active'); document.getElementById('btnWeekly').classList.remove('active'); selectedDay=null; document.getElementById('dayDetail').classList.add('hidden'); renderCalendar(); });
 document.getElementById('btnWeekly').addEventListener('click',  () => { calView='weekly';  document.getElementById('btnWeekly').classList.add('active');  document.getElementById('btnMonthly').classList.remove('active'); selectedDay=null; document.getElementById('dayDetail').classList.add('hidden'); renderCalendar(); });
 document.getElementById('closeDayDetail').addEventListener('click', () => { selectedDay=null; document.getElementById('dayDetail').classList.add('hidden'); renderCalendar(); });
+document.getElementById('dayAddEventBtn').addEventListener('click', () => { if (selectedDay) openEvent(selectedDay); });
 
 // ── Add Task Modal ────────────────────────────────────────
 function openModal()  { document.getElementById('modalOverlay').classList.remove('hidden'); document.getElementById('taskName').focus(); }

@@ -943,6 +943,23 @@ body {
   border-bottom: 1px solid var(--border); background: var(--surface);
 }
 .day-detail-header button { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; }
+.day-detail-add-event-btn {
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8B5CF6 !important;
+  border: 1.5px solid #8B5CF6 !important;
+  border-radius: 20px;
+  background: transparent !important;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.day-detail-add-event-btn:hover {
+  background: #8B5CF6 !important;
+  color: #fff !important;
+}
 #dayDetailTasks { display: flex; flex-direction: column; gap: 0; }
 
 .detail-card {
