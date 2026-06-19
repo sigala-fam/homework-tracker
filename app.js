@@ -693,6 +693,9 @@ function renderBoard() {
 // STICKY NOTES
 // ──────────────────────────────────────────────────────────
 const NOTE_COLORS = ['#FFF9C4', '#FFD6E0', '#C8E6FF', '#C8F5D8', '#E8D6FF'];
+const CHEVRON_SVG = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+  <path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
 const GRIP_SVG = `<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
   <circle cx="2" cy="2"  r="1.3"/><circle cx="6" cy="2"  r="1.3"/>
   <circle cx="2" cy="6"  r="1.3"/><circle cx="6" cy="6"  r="1.3"/>
@@ -721,10 +724,13 @@ function renderStickyNotes() {
              style="background:${c}" data-color="${c}"></span>`
     ).join('');
 
+    if (note.folded) el.classList.add('folded');
+
     el.innerHTML = `
       <div class="sticky-note-header">
         <div class="sticky-note-drag">${GRIP_SVG}</div>
         <div class="sticky-note-colors">${swatches}</div>
+        <button class="sticky-note-fold" title="${note.folded ? 'Expand note' : 'Collapse note'}">${CHEVRON_SVG}</button>
         <button class="sticky-note-delete" title="Delete note">✕</button>
       </div>
       <textarea class="sticky-note-textarea" placeholder="Write something…"></textarea>`;
@@ -734,11 +740,19 @@ function renderStickyNotes() {
 
     container.appendChild(el);
 
-    // ── Textarea: debounced save + prevent canvas pan
+    // Auto-resize textarea to fit content (called after append so scrollHeight is accurate)
+    function autoResizeTA(ta) {
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+    }
+    autoResizeTA(el.querySelector('textarea'));
+
+    // ── Textarea: debounced save + auto-resize + prevent canvas pan
     const ta = el.querySelector('textarea');
     let debounceTimer;
     ta.addEventListener('input', () => {
       note.text = ta.value;
+      autoResizeTA(ta);
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => saveStickyNotes(), 800);
     });
@@ -753,6 +767,15 @@ function renderStickyNotes() {
           s.classList.toggle('active', s.dataset.color === note.color));
         saveStickyNotes();
       });
+    });
+
+    // ── Fold / collapse toggle
+    el.querySelector('.sticky-note-fold').addEventListener('click', e => {
+      e.stopPropagation();
+      note.folded = !note.folded;
+      el.classList.toggle('folded', note.folded);
+      e.currentTarget.title = note.folded ? 'Expand note' : 'Collapse note';
+      saveStickyNotes();
     });
 
     // ── Delete

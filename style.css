@@ -2165,9 +2165,9 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   color: #EF4444;
 }
 .sticky-note-textarea {
-  flex: 1;
+  flex: none;
   width: 100%;
-  min-height: 110px;
+  min-height: 80px;
   padding: 4px 10px 10px;
   background: transparent;
   border: none;
@@ -2176,17 +2176,49 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(0,0,0,0.72);
+  /* Always dark text — sticky note backgrounds are always light pastels */
+  color: rgba(0, 0, 0, 0.75);
   line-height: 1.55;
   cursor: text;
   box-sizing: border-box;
+  overflow: hidden;   /* grows instead of scrolling */
+  height: auto;
 }
 .sticky-note-textarea::placeholder { color: rgba(0,0,0,0.3); }
-[data-theme="dark"] .sticky-note-textarea { color: rgba(255,255,255,0.80); }
-[data-theme="dark"] .sticky-note-textarea::placeholder { color: rgba(255,255,255,0.30); }
+/* Note: no dark-mode color override — note backgrounds are always light */
 [data-theme="dark"] .sticky-note-drag { color: rgba(255,255,255,0.4); }
 [data-theme="dark"] .sticky-note-delete { color: rgba(255,255,255,0.4); }
+[data-theme="dark"] .sticky-note-fold { color: rgba(255,255,255,0.4); }
 [data-theme="dark"] .sticky-note-color-swatch.active { border-color: rgba(255,255,255,0.4); }
+
+/* ── Fold / collapse toggle ─────────────────────────────── */
+.sticky-note-fold {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(0,0,0,0.38);
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.sticky-note-fold:hover {
+  background: rgba(0,0,0,0.08);
+  color: rgba(0,0,0,0.65);
+}
+.sticky-note-fold svg {
+  transition: transform 0.2s;
+}
+/* When folded: chevron flips up, header stays visible, body hides */
+.sticky-note.folded .sticky-note-fold svg {
+  transform: rotate(180deg);
+}
+.sticky-note.folded { min-height: auto; }
+.sticky-note.folded .sticky-note-textarea { display: none; }
+.sticky-note.folded .sticky-note-header { opacity: 1; }
 
 /* ══════════════════════════════════════════════════════════
    CONNECTION LINES (SVG overlay)
