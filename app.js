@@ -70,6 +70,17 @@ const ZOOM_STEP = 0.15;
 // Clicking any column brings it to the front above overlapping ones
 const colZOrder   = new Map(); // colId → z-index number
 let   colZCounter = 1;
+
+// ── Canvas annotations ────────────────────────────────────
+let stickyNotes = [];          // {id, text, x, y, color}
+let connections = [];          // {id, fromId, fromType, toId, toType}
+
+// Connect-mode state (in-memory, never persisted)
+let connectMode                   = false;
+let connectSource                 = null;  // {id, type}
+let selectedConnectionId          = null;
+let connectModeListenersInitialized = false;
+
 let calView     = 'monthly';
 let calDate     = new Date();
 let selectedDay = null;
@@ -85,7 +96,9 @@ function userDocRef() { return doc(db, 'users', currentUser.uid); }
 function saveTasks()    { if (currentUser) setDoc(userDocRef(), { tasks },    { merge: true }); }
 function saveSubjects() { if (currentUser) setDoc(userDocRef(), { subjects }, { merge: true }); }
 function saveEvents()   { if (currentUser) setDoc(userDocRef(), { events },   { merge: true }); }
-function saveColumns()  { if (currentUser) setDoc(userDocRef(), { columns },  { merge: true }); }
+function saveColumns()      { if (currentUser) setDoc(userDocRef(), { columns },      { merge: true }); }
+function saveStickyNotes()  { if (currentUser) setDoc(userDocRef(), { stickyNotes }, { merge: true }); }
+function saveConnections()  { if (currentUser) setDoc(userDocRef(), { connections }, { merge: true }); }
 function getSettings()  { return JSON.parse(localStorage.getItem('hw-settings') || 'null') || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } }; }
 function saveSettings(s){ localStorage.setItem('hw-settings', JSON.stringify(s)); if (currentUser) setDoc(userDocRef(), { settings: s }, { merge: true }); }
 
@@ -428,6 +441,37 @@ function bringColToFront(colId) {
   if (el) el.style.zIndex = colZCounter;
 }
 
+// ── Canvas coordinate utilities ───────────────────────────
+// Convert screen pixel coords → canvas-space coords (accounting for pan + zoom)
+function screenToCanvas(screenX, screenY) {
+  const rect = document.getElementById('boardView').getBoundingClientRect();
+  return {
+    x: (screenX - rect.left - canvasPanX) / canvasZoom,
+    y: (screenY - rect.top  - canvasPanY) / canvasZoom,
+  };
+}
+
+// Return the anchor point (in canvas space) for a connection endpoint
+function getAnchorPoint(id, type) {
+  if (type === 'column') {
+    const c = columns.find(c => c.id === id);
+    return c ? { x: c.x + 155, y: c.y } : { x: 0, y: 0 };
+  }
+  if (type === 'note') {
+    const n = stickyNotes.find(n => n.id === id);
+    return n ? { x: n.x + 100, y: n.y + 70 } : { x: 0, y: 0 };
+  }
+  if (type === 'floatTask') {
+    const t = tasks.find(t => t.id === id);
+    return t ? { x: (t.floatX || 0) + 140, y: (t.floatY || 0) + 35 } : { x: 0, y: 0 };
+  }
+  if (type === 'floatSubject') {
+    const s = subjects.find(s => s.id === id);
+    return s ? { x: (s.floatX || 0) + 140, y: (s.floatY || 0) + 30 } : { x: 0, y: 0 };
+  }
+  return { x: 0, y: 0 };
+}
+
 function zoomAtPoint(newZoom, px, py) {
   newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
   const cx = (px - canvasPanX) / canvasZoom;
@@ -466,9 +510,13 @@ function initCanvasInteractions() {
   // ── Drag on empty space to pan ────────────────────────
   boardView.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
-    if (e.target.closest('.board-column') ||
-        e.target.closest('.column-add-col') ||
-        e.target.closest('.canvas-controls')) return;
+    if (e.target.closest('.board-column')     ||
+        e.target.closest('.column-add-col')   ||
+        e.target.closest('.canvas-controls')  ||
+        e.target.closest('.canvas-toolbar')   ||
+        e.target.closest('.sticky-note')      ||
+        e.target.closest('.floating-task')    ||
+        e.target.closest('.floating-subject')) return;
 
     e.preventDefault();
     const startX = e.clientX - canvasPanX;
@@ -577,7 +625,14 @@ function renderBoard() {
 
     // Clicking anywhere on a column brings it in front of any overlapping ones.
     // Uses capture phase so it fires before children stop propagation.
-    colEl.addEventListener('mousedown', () => bringColToFront(colId), { capture: true });
+    colEl.addEventListener('mousedown', e => {
+      if (connectMode) {
+        e.stopPropagation();
+        handleConnectClick(colId, 'column');
+        return;
+      }
+      bringColToFront(colId);
+    }, { capture: true });
 
     const handle = colEl.querySelector('.col-drag-handle');
     if (!handle) return;
@@ -628,12 +683,511 @@ function renderBoard() {
 
   applyCanvasTransform();
   renderStatusLine();
+  // Render canvas annotations — always after innerHTML is set above
+  renderStickyNotes();
+  renderFloatingItems();
+  renderConnections();
+}
+
+// ──────────────────────────────────────────────────────────
+// STICKY NOTES
+// ──────────────────────────────────────────────────────────
+const NOTE_COLORS = ['#FFF9C4', '#FFD6E0', '#C8E6FF', '#C8F5D8', '#E8D6FF'];
+const GRIP_SVG = `<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
+  <circle cx="2" cy="2"  r="1.3"/><circle cx="6" cy="2"  r="1.3"/>
+  <circle cx="2" cy="6"  r="1.3"/><circle cx="6" cy="6"  r="1.3"/>
+  <circle cx="2" cy="10" r="1.3"/><circle cx="6" cy="10" r="1.3"/>
+</svg>`;
+const ARROW_SVG = `<svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+  <path d="M2 5.5h7M6 2.5l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+function renderStickyNotes() {
+  document.querySelectorAll('#boardColumns .sticky-note').forEach(el => el.remove());
+  const container = document.getElementById('boardColumns');
+  if (!container) return;
+
+  stickyNotes.forEach(note => {
+    const el = document.createElement('div');
+    el.className = 'sticky-note';
+    el.dataset.noteId = note.id;
+    el.style.left      = (note.x || 200) + 'px';
+    el.style.top       = (note.y || 200) + 'px';
+    el.style.background = note.color || NOTE_COLORS[0];
+    el.style.zIndex    = '10';
+
+    const swatches = NOTE_COLORS.map(c =>
+      `<span class="sticky-note-color-swatch${c === note.color ? ' active' : ''}"
+             style="background:${c}" data-color="${c}"></span>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="sticky-note-header">
+        <div class="sticky-note-drag">${GRIP_SVG}</div>
+        <div class="sticky-note-colors">${swatches}</div>
+        <button class="sticky-note-delete" title="Delete note">✕</button>
+      </div>
+      <textarea class="sticky-note-textarea" placeholder="Write something…"></textarea>`;
+
+    // Set textarea value safely (avoid HTML injection)
+    el.querySelector('textarea').value = note.text || '';
+
+    container.appendChild(el);
+
+    // ── Textarea: debounced save + prevent canvas pan
+    const ta = el.querySelector('textarea');
+    let debounceTimer;
+    ta.addEventListener('input', () => {
+      note.text = ta.value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => saveStickyNotes(), 800);
+    });
+    ta.addEventListener('mousedown', e => e.stopPropagation());
+
+    // ── Color swatches
+    el.querySelectorAll('.sticky-note-color-swatch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        note.color = sw.dataset.color;
+        el.style.background = note.color;
+        el.querySelectorAll('.sticky-note-color-swatch').forEach(s =>
+          s.classList.toggle('active', s.dataset.color === note.color));
+        saveStickyNotes();
+      });
+    });
+
+    // ── Delete
+    el.querySelector('.sticky-note-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      stickyNotes = stickyNotes.filter(n => n.id !== note.id);
+      connections = connections.filter(c => c.fromId !== note.id && c.toId !== note.id);
+      saveStickyNotes();
+      saveConnections();
+      el.remove();
+      renderConnections();
+    });
+
+    // ── Connect-mode: clicking note selects it as source/target
+    el.addEventListener('mousedown', e => {
+      if (connectMode) { e.stopPropagation(); handleConnectClick(note.id, 'note'); return; }
+    });
+
+    // ── Drag via handle
+    const handle = el.querySelector('.sticky-note-drag');
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startMX = e.clientX, startMY = e.clientY;
+      const startNX = note.x, startNY = note.y;
+      function onMove(ev) {
+        note.x = startNX + (ev.clientX - startMX) / canvasZoom;
+        note.y = startNY + (ev.clientY - startMY) / canvasZoom;
+        el.style.left = note.x + 'px';
+        el.style.top  = note.y + 'px';
+        renderConnections();
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup',   onUp);
+        saveStickyNotes();
+        renderConnections();
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup',   onUp);
+    });
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// CONNECTION LINES
+// ──────────────────────────────────────────────────────────
+function renderConnections() {
+  const container = document.getElementById('boardColumns');
+  if (!container) return;
+
+  let svg = document.getElementById('connectionsSvg');
+  if (!svg) {
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'connectionsSvg';
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    container.insertBefore(svg, container.firstChild);
+    // Add arrowhead markers once
+    svg.innerHTML = `<defs>
+      <marker id="conn-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)" fill-opacity="0.8"/>
+      </marker>
+      <marker id="conn-arrow-sel" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="#DC2626"/>
+      </marker>
+    </defs>`;
+  }
+
+  // Remove old paths only (keep <defs>)
+  svg.querySelectorAll('path').forEach(p => p.remove());
+
+  connections.forEach(conn => {
+    const from = getAnchorPoint(conn.fromId, conn.fromType);
+    const to   = getAnchorPoint(conn.toId,   conn.toType);
+    const cpY  = Math.max(60, Math.abs(to.y - from.y) * 0.4);
+    const d    = `M ${from.x} ${from.y} C ${from.x} ${from.y + cpY}, ${to.x} ${to.y - cpY}, ${to.x} ${to.y}`;
+    const isSel = conn.id === selectedConnectionId;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', `connection-line${isSel ? ' selected' : ''}`);
+    path.setAttribute('marker-end', isSel ? 'url(#conn-arrow-sel)' : 'url(#conn-arrow)');
+    path.dataset.connId = conn.id;
+
+    // Click: first click selects (turns red), second click deletes
+    path.addEventListener('click', e => {
+      e.stopPropagation();
+      if (selectedConnectionId === conn.id) {
+        if (window.confirm('Delete this connection?')) {
+          connections = connections.filter(c => c.id !== conn.id);
+          selectedConnectionId = null;
+          saveConnections();
+        } else {
+          selectedConnectionId = null;
+        }
+        renderConnections();
+      } else {
+        selectedConnectionId = conn.id;
+        renderConnections();
+      }
+    });
+
+    svg.appendChild(path);
+  });
+}
+
+function getConnectableElement(id, type) {
+  const map = {
+    column:       `.board-column[data-col="${id}"]`,
+    note:         `.sticky-note[data-note-id="${id}"]`,
+    floatTask:    `.floating-task[data-task-id="${id}"]`,
+    floatSubject: `.floating-subject[data-subj-id="${id}"]`,
+  };
+  return map[type] ? document.querySelector(map[type]) : null;
+}
+
+function enterConnectMode() {
+  connectMode   = true;
+  connectSource = null;
+  document.getElementById('toolbarConnectMode')?.classList.add('active');
+  document.getElementById('boardView')?.classList.add('connect-mode-active');
+}
+
+function exitConnectMode() {
+  connectMode   = false;
+  connectSource = null;
+  document.getElementById('toolbarConnectMode')?.classList.remove('active');
+  document.getElementById('boardView')?.classList.remove('connect-mode-active');
+  document.getElementById('connectionsSvg')?.querySelector('.preview-line')?.remove();
+  document.querySelectorAll('.connect-source-highlight').forEach(el =>
+    el.classList.remove('connect-source-highlight'));
+}
+
+function handleConnectClick(id, type) {
+  if (!connectMode) return;
+  if (!connectSource) {
+    // First click: mark as source
+    connectSource = { id, type };
+    getConnectableElement(id, type)?.classList.add('connect-source-highlight');
+  } else if (connectSource.id !== id) {
+    // Second click on a different element: create connection
+    const dupe = connections.some(c =>
+      (c.fromId === connectSource.id && c.toId === id) ||
+      (c.fromId === id && c.toId === connectSource.id)
+    );
+    if (!dupe) {
+      connections.push({
+        id: genId(),
+        fromId:   connectSource.id,
+        fromType: connectSource.type,
+        toId:     id,
+        toType:   type,
+      });
+      saveConnections();
+    }
+    exitConnectMode();
+    renderConnections();
+  }
+  // Clicking the same element twice: do nothing (ignore self-loops)
+}
+
+function initConnectMode() {
+  if (connectModeListenersInitialized) return;
+  connectModeListenersInitialized = true;
+
+  const boardView = document.getElementById('boardView');
+
+  // Preview line follows cursor while source is selected
+  boardView.addEventListener('mousemove', e => {
+    if (!connectMode || !connectSource) return;
+    const svg = document.getElementById('connectionsSvg');
+    if (!svg) return;
+    svg.querySelector('.preview-line')?.remove();
+    const pos  = screenToCanvas(e.clientX, e.clientY);
+    const from = getAnchorPoint(connectSource.id, connectSource.type);
+    const cpY  = Math.max(60, Math.abs(pos.y - from.y) * 0.4);
+    const d    = `M ${from.x} ${from.y} C ${from.x} ${from.y + cpY}, ${pos.x} ${pos.y - cpY}, ${pos.x} ${pos.y}`;
+    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    preview.setAttribute('d', d);
+    preview.setAttribute('class', 'preview-line');
+    svg.appendChild(preview);
+  });
+
+  // Escape cancels connect mode
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && connectMode) exitConnectMode();
+  });
+
+  // Clicking empty canvas space clears the pending source (but stays in connect mode)
+  boardView.addEventListener('mousedown', e => {
+    if (!connectMode) return;
+    if (!e.target.closest('.board-column')    &&
+        !e.target.closest('.sticky-note')     &&
+        !e.target.closest('.floating-task')   &&
+        !e.target.closest('.floating-subject')) {
+      // Clear source selection; deselect any line
+      document.querySelectorAll('.connect-source-highlight').forEach(el =>
+        el.classList.remove('connect-source-highlight'));
+      connectSource = null;
+      selectedConnectionId = null;
+      document.getElementById('connectionsSvg')?.querySelector('.preview-line')?.remove();
+      renderConnections();
+    }
+  });
+}
+
+function initToolbar() {
+  const bv = document.getElementById('boardView');
+
+  // ── Add sticky note ───────────────────────────────────
+  document.getElementById('toolbarAddNote')?.addEventListener('click', () => {
+    const r   = bv.getBoundingClientRect();
+    const pos = screenToCanvas(r.left + bv.offsetWidth / 2, r.top + bv.offsetHeight / 2);
+    const note = {
+      id:    genId(),
+      text:  '',
+      x:     pos.x - 100,
+      y:     pos.y - 70,
+      color: NOTE_COLORS[0],
+    };
+    stickyNotes.push(note);
+    saveStickyNotes();
+    renderStickyNotes();
+    document.querySelector(`.sticky-note[data-note-id="${note.id}"] textarea`)?.focus();
+  });
+
+  // ── Connect mode toggle ───────────────────────────────
+  document.getElementById('toolbarConnectMode')?.addEventListener('click', () => {
+    if (connectMode) exitConnectMode(); else enterConnectMode();
+  });
+
+  // Clicking the background deselects the active connection line
+  bv.addEventListener('mousedown', e => {
+    if (connectMode) return; // handled by initConnectMode
+    if (selectedConnectionId && !e.target.closest('#connectionsSvg')) {
+      selectedConnectionId = null;
+      renderConnections();
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// FLOATING TASKS & SUBJECTS
+// ──────────────────────────────────────────────────────────
+
+// Shared drag logic for floating items (tasks and subjects)
+function initFloatDrag(el, dataObj, kind) {
+  const handle = el.querySelector('.floating-drag-handle');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startMX = e.clientX, startMY = e.clientY;
+    const startX  = dataObj.floatX || 0;
+    const startY  = dataObj.floatY || 0;
+
+    el.classList.add('floating-dragging');
+
+    function onMove(ev) {
+      dataObj.floatX = startX + (ev.clientX - startMX) / canvasZoom;
+      dataObj.floatY = startY + (ev.clientY - startMY) / canvasZoom;
+      el.style.left = dataObj.floatX + 'px';
+      el.style.top  = dataObj.floatY + 'px';
+      // Highlight the column under cursor
+      el.style.pointerEvents = 'none';
+      const underEl = document.elementFromPoint(ev.clientX, ev.clientY);
+      el.style.pointerEvents = '';
+      const hoveredCol = underEl?.closest('.board-column');
+      document.querySelectorAll('.board-column').forEach(col =>
+        col.classList.toggle('drop-target-highlight', col === hoveredCol));
+      renderConnections();
+    }
+
+    function onUp(ev) {
+      el.classList.remove('floating-dragging');
+      document.querySelectorAll('.board-column').forEach(col =>
+        col.classList.remove('drop-target-highlight'));
+
+      // Detect drop target — temporarily hide element so it doesn't block the hit test
+      el.style.pointerEvents = 'none';
+      const dropColEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.board-column');
+      el.style.pointerEvents = '';
+
+      if (dropColEl) {
+        const targetColId = dropColEl.dataset.col;
+        if (kind === 'task') {
+          // Move the task's subject to the target column
+          const subj = subjects.find(s => s.id === dataObj.subject);
+          if (subj) subj.day = targetColId;
+          dataObj.floated = false;
+          dataObj.floatX  = null;
+          dataObj.floatY  = null;
+          saveTasks();
+          saveSubjects();
+        } else {
+          // Move the subject itself to the target column
+          dataObj.day    = targetColId;
+          dataObj.floated = false;
+          dataObj.floatX  = null;
+          dataObj.floatY  = null;
+          saveSubjects();
+        }
+        renderBoard();
+      } else {
+        // Stay floating at new position
+        if (kind === 'task') saveTasks();
+        else saveSubjects();
+        renderConnections();
+      }
+
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup',   onUp);
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onUp);
+  });
+}
+
+function renderFloatingItems() {
+  document.querySelectorAll('#boardColumns .floating-task, #boardColumns .floating-subject').forEach(el => el.remove());
+  const container = document.getElementById('boardColumns');
+  if (!container) return;
+
+  // ── Floating subjects ─────────────────────────────────
+  subjects.filter(s => s.floated).forEach(subj => {
+    const el = document.createElement('div');
+    el.className = 'floating-subject';
+    el.dataset.subjId = subj.id;
+    el.style.left = (subj.floatX || 500) + 'px';
+    el.style.top  = (subj.floatY || 200) + 'px';
+    el.style.zIndex = '10';
+    el.style.setProperty('--subject-color', subj.color);
+
+    const subjTasks = tasks.filter(t => t.subject === subj.id && !t.floated);
+    const taskRows = subjTasks.map(t => {
+      const due = dueLabel(t.due);
+      return `
+        <div class="kanban-card${t.done ? ' done' : ''}" style="--subject-color:${subj.color}">
+          <div class="card-main-row">
+            <input type="checkbox" class="card-checkbox" ${t.done ? 'checked' : ''}
+                   style="--subject-color:${subj.color}" data-id="${t.id}" />
+            <div class="card-body">
+              <div class="card-title">${escHtml(t.name)}</div>
+              ${t.due ? `<div class="card-meta"><span class="card-due ${due.cls}">${due.text}</span></div>` : ''}
+            </div>
+            <button class="card-delete" data-id="${t.id}" title="Delete">✕</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="floating-subject-header">
+        <div class="floating-drag-handle" title="Drag">${GRIP_SVG}</div>
+        <span class="floating-subject-label">${escHtml(subj.label)}</span>
+        <button class="floating-subject-unpin" title="Return to column">↩</button>
+      </div>
+      <div class="floating-subject-body">
+        ${taskRows || '<p class="floating-subject-empty">No tasks yet</p>'}
+      </div>`;
+
+    container.appendChild(el);
+
+    // Events
+    el.addEventListener('mousedown', e => {
+      if (connectMode) { e.stopPropagation(); handleConnectClick(subj.id, 'floatSubject'); return; }
+    });
+    el.querySelector('.floating-subject-unpin').addEventListener('click', e => {
+      e.stopPropagation();
+      subj.floated = false; subj.floatX = null; subj.floatY = null;
+      saveSubjects(); renderBoard();
+    });
+    el.querySelectorAll('.card-checkbox').forEach(cb =>
+      cb.addEventListener('change', () => handleCheck(cb.dataset.id)));
+    el.querySelectorAll('.card-delete').forEach(btn =>
+      btn.addEventListener('click', () => deleteTask(btn.dataset.id)));
+
+    initFloatDrag(el, subj, 'subject');
+  });
+
+  // ── Floating tasks ────────────────────────────────────
+  tasks.filter(t => t.floated).forEach(task => {
+    const subj = subjects.find(s => s.id === task.subject) || { label: '?', color: '#aaa' };
+    const due  = dueLabel(task.due);
+
+    const el = document.createElement('div');
+    el.className = 'floating-task';
+    el.dataset.taskId = task.id;
+    el.style.left = (task.floatX || 600) + 'px';
+    el.style.top  = (task.floatY || 300) + 'px';
+    el.style.zIndex = '10';
+
+    el.innerHTML = `
+      <div class="floating-task-header">
+        <div class="floating-drag-handle" title="Drag">${GRIP_SVG}</div>
+        <span class="floating-task-label" style="color:${subj.color}">${escHtml(subj.label)}</span>
+        <button class="floating-task-unpin" title="Return to column">↩</button>
+      </div>
+      <div class="floating-task-body">
+        <div class="kanban-card${task.done ? ' done' : ''}" style="--subject-color:${subj.color}">
+          <div class="card-main-row">
+            <input type="checkbox" class="card-checkbox" ${task.done ? 'checked' : ''}
+                   style="--subject-color:${subj.color}" data-id="${task.id}" />
+            <div class="card-body">
+              <div class="card-title">${escHtml(task.name)}</div>
+              ${task.due ? `<div class="card-meta"><span class="card-due ${due.cls}">${due.text}</span></div>` : ''}
+              ${task.notes ? `<div class="card-notes">${escHtml(task.notes)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    container.appendChild(el);
+
+    el.addEventListener('mousedown', e => {
+      if (connectMode) { e.stopPropagation(); handleConnectClick(task.id, 'floatTask'); return; }
+    });
+    el.querySelector('.card-checkbox').addEventListener('change', () => handleCheck(task.id));
+    el.querySelector('.floating-task-unpin').addEventListener('click', e => {
+      e.stopPropagation();
+      task.floated = false; task.floatX = null; task.floatY = null;
+      saveTasks(); renderBoard();
+    });
+
+    initFloatDrag(el, task, 'task');
+  });
 }
 
 function renderColumnTasks(colId) {
   const container = document.getElementById('col-' + colId);
   if (!container) return;
-  const daySubs = subjects.filter(s => s.day === colId);
+  // Only show subjects that belong here and are NOT floating on the canvas
+  const daySubs = subjects.filter(s => s.day === colId && !s.floated);
 
   if (!daySubs.length) {
     container.innerHTML = `<p class="group-empty" style="padding:16px 13px">No classes here yet!<br>Tap <strong>📋 Classes</strong> in the top right to add yours.</p>`;
@@ -641,8 +1195,9 @@ function renderColumnTasks(colId) {
   }
 
   container.innerHTML = daySubs.map(subj => {
+    // Only show non-floated tasks for this subject
     const subTasks = tasks
-      .filter(t => t.subject === subj.id)
+      .filter(t => t.subject === subj.id && !t.floated)
       .sort((a, b) => {
         if (a.done !== b.done) return a.done ? 1 : -1;
         return (a.due||'').localeCompare(b.due||'');
@@ -653,6 +1208,7 @@ function renderColumnTasks(colId) {
       <div class="subject-group" style="--subject-color:${subj.color}" data-subj="${subj.id}">
         <div class="subject-color-bar"></div>
         <div class="subject-group-header">
+          <button class="subject-float-handle" data-subj-id="${subj.id}" title="Float on canvas">${ARROW_SVG}</button>
           <span class="subject-group-label">${escHtml(subj.label)}</span>
           <span class="subject-group-count">${subTasks.filter(t=>!t.done).length} left</span>
         </div>
@@ -688,6 +1244,40 @@ function renderColumnTasks(colId) {
   container.querySelectorAll('.inline-add-trigger').forEach(btn =>
     btn.addEventListener('click', () => showInlineAdd(btn.dataset.subj))
   );
+
+  // ── Float subject handle — drag class card out of column ──
+  container.querySelectorAll('.subject-float-handle').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const subj = subjects.find(s => s.id === btn.dataset.subjId);
+      if (!subj) return;
+      const r = btn.getBoundingClientRect();
+      const pos = screenToCanvas(r.left, r.top);
+      subj.floated = true;
+      subj.floatX  = pos.x;
+      subj.floatY  = pos.y;
+      saveSubjects();
+      renderBoard();
+    });
+  });
+
+  // ── Float task handle — drag task card out of column ──────
+  container.querySelectorAll('.card-float-handle').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const task = tasks.find(t => t.id === btn.dataset.taskId);
+      if (!task) return;
+      const r = btn.getBoundingClientRect();
+      const pos = screenToCanvas(r.left, r.top);
+      task.floated = true;
+      task.floatX  = pos.x;
+      task.floatY  = pos.y;
+      saveTasks();
+      renderBoard();
+    });
+  });
 }
 
 function showInlineAdd(subjId) {
@@ -889,6 +1479,7 @@ function renderCard(t, subj) {
           </div>
           ${t.notes ? `<div class="card-notes">${escHtml(t.notes)}</div>` : ''}
         </div>
+        <button class="card-float-handle" data-task-id="${t.id}" title="Float on canvas">${ARROW_SVG}</button>
         <button class="card-subtask-btn ${hasSubs?'has-subs':''}" data-id="${t.id}" title="Checklist">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="5.75" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="9.5" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="2" width="5" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="5.75" width="5" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="9.5" width="5" height="1.5" rx="0.75" fill="currentColor"/></svg>
           ${countBadge}
@@ -2676,10 +3267,12 @@ async function loadUserData() {
 
   if (snap.exists()) {
     const d = snap.data();
-    if (d.columns)  columns  = d.columns;
-    if (d.subjects) subjects = mergeSubjects(d.subjects);
-    if (d.tasks)    tasks    = d.tasks;
-    if (d.events)   events   = d.events;
+    if (d.columns)     columns     = d.columns;
+    if (d.subjects)    subjects    = mergeSubjects(d.subjects);
+    if (d.tasks)       tasks       = d.tasks;
+    if (d.events)      events      = d.events;
+    if (d.stickyNotes) stickyNotes = d.stickyNotes;
+    if (d.connections) connections = d.connections;
     if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
   } else {
     // First sign-in — migrate any existing localStorage data, then save to cloud
@@ -2715,6 +3308,8 @@ function initApp() {
   loadCanvasState();
   renderBoard();
   initCanvasInteractions();
+  initToolbar();
+  initConnectMode();
 }
 
 // ── Sign-out button ───────────────────────────────────────
@@ -2819,7 +3414,11 @@ onAuthStateChanged(auth, async user => {
     // reset state so next user starts fresh
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
-    tasks    = [];
-    events   = [];
+    tasks       = [];
+    events      = [];
+    stickyNotes = [];
+    connections = [];
+    connectMode = false;
+    connectSource = null;
   }
 });

@@ -2032,3 +2032,394 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   /* Login card */
   .login-card { padding: 32px 20px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   CANVAS TOOLBAR  (left-side vertical pill)
+══════════════════════════════════════════════════════════ */
+.canvas-toolbar {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 6px 4px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  user-select: none;
+}
+.canvas-toolbar-btn {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  width: 32px;
+  height: 32px;
+  border-radius: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+  flex-shrink: 0;
+}
+.canvas-toolbar-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.canvas-toolbar-btn.active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.canvas-toolbar-divider {
+  width: 18px;
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   STICKY NOTES
+══════════════════════════════════════════════════════════ */
+.sticky-note {
+  position: absolute;
+  width: 200px;
+  min-height: 140px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  transition: box-shadow 0.18s var(--ease);
+}
+.sticky-note:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+.sticky-note-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 7px 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  gap: 4px;
+}
+.sticky-note:hover .sticky-note-header {
+  opacity: 1;
+}
+.sticky-note-drag {
+  color: rgba(0,0,0,0.35);
+  cursor: grab;
+  padding: 3px 4px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.sticky-note-drag:hover {
+  background: rgba(0,0,0,0.08);
+}
+.sticky-note-drag:active { cursor: grabbing; }
+.sticky-note-colors {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+}
+.sticky-note-color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+.sticky-note-color-swatch:hover,
+.sticky-note-color-swatch.active {
+  transform: scale(1.3);
+  border-color: rgba(0,0,0,0.28);
+}
+.sticky-note-delete {
+  background: none;
+  border: none;
+  color: rgba(0,0,0,0.35);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 5px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.sticky-note-delete:hover {
+  background: rgba(239,68,68,0.14);
+  color: #EF4444;
+}
+.sticky-note-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 110px;
+  padding: 4px 10px 10px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0,0,0,0.72);
+  line-height: 1.55;
+  cursor: text;
+  box-sizing: border-box;
+}
+.sticky-note-textarea::placeholder { color: rgba(0,0,0,0.3); }
+[data-theme="dark"] .sticky-note-textarea { color: rgba(255,255,255,0.80); }
+[data-theme="dark"] .sticky-note-textarea::placeholder { color: rgba(255,255,255,0.30); }
+[data-theme="dark"] .sticky-note-drag { color: rgba(255,255,255,0.4); }
+[data-theme="dark"] .sticky-note-delete { color: rgba(255,255,255,0.4); }
+[data-theme="dark"] .sticky-note-color-swatch.active { border-color: rgba(255,255,255,0.4); }
+
+/* ══════════════════════════════════════════════════════════
+   CONNECTION LINES (SVG overlay)
+══════════════════════════════════════════════════════════ */
+#connectionsSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4000px;
+  height: 4000px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+#connectionsSvg .connection-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2px;
+  stroke-opacity: 0.75;
+  pointer-events: stroke;
+  cursor: pointer;
+  transition: stroke-opacity 0.15s, stroke-width 0.15s;
+}
+#connectionsSvg .connection-line:hover {
+  stroke-opacity: 1;
+  stroke-width: 3px;
+}
+#connectionsSvg .connection-line.selected {
+  stroke: #DC2626;
+  stroke-opacity: 1;
+  stroke-width: 3px;
+  stroke-dasharray: 6 3;
+}
+#connectionsSvg .preview-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2px;
+  stroke-opacity: 0.4;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+/* Board cursor changes in connect mode */
+.board-view.connect-mode-active {
+  cursor: crosshair;
+}
+/* Dashed outline on all connectable elements in connect mode */
+.connect-mode-active .board-column,
+.connect-mode-active .sticky-note,
+.connect-mode-active .floating-task,
+.connect-mode-active .floating-subject {
+  cursor: pointer;
+  outline: 1.5px dashed rgba(109,40,217,0.4);
+  outline-offset: 3px;
+}
+/* Solid highlight on selected source element */
+.connect-source-highlight {
+  outline: 2.5px solid var(--accent) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 4px rgba(109,40,217,0.12) !important;
+}
+
+/* ══════════════════════════════════════════════════════════
+   FLOATING TASKS
+══════════════════════════════════════════════════════════ */
+.floating-task {
+  position: absolute;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  transition: box-shadow 0.18s var(--ease);
+}
+.floating-task:hover { box-shadow: var(--shadow-card-hover); }
+.floating-task-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.floating-task-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.floating-task-body { padding: 0; }
+.floating-task-body .kanban-card { border-radius: 0 0 10px 10px; border-bottom: none; }
+.floating-task-unpin {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 5px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.floating-task-unpin:hover { background: var(--surface-3); color: var(--text); }
+
+/* ══════════════════════════════════════════════════════════
+   FLOATING SUBJECTS
+══════════════════════════════════════════════════════════ */
+.floating-subject {
+  position: absolute;
+  width: 310px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--subject-color, var(--accent));
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  transition: box-shadow 0.18s var(--ease);
+}
+.floating-subject:hover { box-shadow: var(--shadow-card-hover); }
+.floating-subject-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px 7px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.floating-subject-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--subject-color, var(--accent));
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.floating-subject-unpin {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 5px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.floating-subject-unpin:hover { background: var(--surface-3); color: var(--text); }
+.floating-subject-body {
+  padding: 4px 0 4px;
+  display: flex;
+  flex-direction: column;
+}
+.floating-subject-body .kanban-card:last-child { border-radius: 0 0 10px 10px; }
+.floating-subject-empty {
+  padding: 10px 13px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Shared floating drag handle */
+.floating-drag-handle {
+  color: var(--muted);
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.floating-drag-handle:hover { background: var(--surface-3); color: var(--text); }
+.floating-drag-handle:active { cursor: grabbing; }
+
+/* Drop-target highlight when dragging a floating item over a column */
+.board-column.drop-target-highlight {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--col-bg));
+}
+/* Ghost appearance while dragging */
+.floating-dragging {
+  opacity: 0.72;
+  box-shadow: var(--shadow-lg) !important;
+  z-index: 9999 !important;
+}
+
+/* ══════════════════════════════════════════════════════════
+   DRAG-OUT HANDLES on task cards and subject headers
+══════════════════════════════════════════════════════════ */
+.card-float-handle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s, color 0.12s;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.kanban-card:hover .card-float-handle { opacity: 1; }
+.card-float-handle:hover { background: var(--surface-3); color: var(--accent); }
+.card-float-handle:active { cursor: grabbing; }
+
+.subject-float-handle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s, color 0.12s;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.subject-group:hover .subject-float-handle { opacity: 1; }
+.subject-float-handle:hover { background: var(--surface-3); color: var(--accent); }
