@@ -883,23 +883,23 @@ function renderCanvasTables() {
     const grid = document.createElement('div');
     grid.className = 'canvas-table-grid';
     grid.style.gridTemplateColumns = `repeat(${tbl.cols}, 100px)`;
-    tbl.data.forEach((row, ri) => {
-      row.forEach((cell, ci) => {
+    for (let ri = 0; ri < tbl.rows; ri++) {
+      for (let ci = 0; ci < tbl.cols; ci++) {
+        const idx = ri * tbl.cols + ci;
         const inp = document.createElement('input');
         inp.type  = 'text';
         inp.className = 'canvas-table-cell';
-        inp.value = cell || '';
+        inp.value = tbl.data[idx] || '';
         inp.placeholder = '…';
         inp.addEventListener('mousedown', e => e.stopPropagation());
         inp.addEventListener('input', () => {
-          if (!tbl.data[ri]) tbl.data[ri] = [];
-          tbl.data[ri][ci] = inp.value;
+          tbl.data[idx] = inp.value;
           clearTimeout(inp._saveTimer);
           inp._saveTimer = setTimeout(() => saveCanvasTables(), 600);
         });
         grid.appendChild(inp);
-      });
-    });
+      }
+    }
     el.appendChild(grid);
 
     // + Add row button
@@ -908,7 +908,7 @@ function renderCanvasTables() {
     addRow.textContent = '+ row';
     addRow.addEventListener('click', () => {
       tbl.rows++;
-      tbl.data.push(Array(tbl.cols).fill(''));
+      for (let c = 0; c < tbl.cols; c++) tbl.data.push('');
       saveCanvasTables();
       renderCanvasTables();
     });
@@ -919,8 +919,16 @@ function renderCanvasTables() {
     addCol.className = 'canvas-table-add-col';
     addCol.textContent = '+ col';
     addCol.addEventListener('click', () => {
+      const oldCols = tbl.cols;
       tbl.cols++;
-      tbl.data.forEach(row => row.push(''));
+      // Rebuild flat array with the new column inserted at the end of each row
+      const newData = [];
+      for (let ri = 0; ri < tbl.rows; ri++) {
+        for (let ci = 0; ci < tbl.cols; ci++) {
+          newData.push(ci < oldCols ? (tbl.data[ri * oldCols + ci] || '') : '');
+        }
+      }
+      tbl.data = newData;
       saveCanvasTables();
       renderCanvasTables();
     });
@@ -1236,7 +1244,7 @@ function initToolbar() {
       x:      pos.x - 170,
       y:      pos.y - 60,
       rows, cols,
-      data:   Array.from({ length: rows }, () => Array(cols).fill('')),
+      data:   Array(rows * cols).fill(''),   // flat: index = ri*cols + ci
       folded: false,
     };
     canvasTables.push(tbl);
