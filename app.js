@@ -764,7 +764,6 @@ function renderStickyNotes() {
 
     el.innerHTML = `
       <div class="sticky-note-header">
-        <div class="sticky-note-drag">${GRIP_SVG}</div>
         <div class="sticky-note-colors">${swatches}</div>
         <button class="sticky-note-fold" title="${note.folded ? 'Expand note' : 'Collapse note'}">${CHEVRON_SVG}</button>
         <button class="sticky-note-delete" title="Delete note">✕</button>
@@ -821,13 +820,15 @@ function renderStickyNotes() {
       renderConnections();
     });
 
-    // ── Drag via handle
-    const handle = el.querySelector('.sticky-note-drag');
-    handle.addEventListener('mousedown', e => {
+    // ── Drag: click anywhere on the note except textarea / buttons / swatches
+    el.addEventListener('mousedown', e => {
+      if (connectMode) return;  // let boardView capture handle connect
+      if (e.target.closest('textarea, button, .sticky-note-color-swatch')) return;
       e.preventDefault();
       e.stopPropagation();
       const startMX = e.clientX, startMY = e.clientY;
-      const startNX = note.x, startNY = note.y;
+      const startNX = note.x,    startNY = note.y;
+      el.style.cursor = 'grabbing';
       function onMove(ev) {
         note.x = startNX + (ev.clientX - startMX) / canvasZoom;
         note.y = startNY + (ev.clientY - startMY) / canvasZoom;
@@ -838,6 +839,7 @@ function renderStickyNotes() {
       function onUp() {
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup',   onUp);
+        el.style.cursor = '';
         saveStickyNotes();
         renderConnections();
       }

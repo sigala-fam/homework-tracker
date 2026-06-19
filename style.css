@@ -2134,29 +2134,19 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 7px 3px;
-  opacity: 0;
+  padding: 5px 7px 3px;
+  opacity: 0.7;
   transition: opacity 0.15s;
   flex-shrink: 0;
   gap: 4px;
+  cursor: grab;
+  border-radius: 10px 10px 0 0;
 }
+.sticky-note-header:active { cursor: grabbing; }
 .sticky-note:hover .sticky-note-header {
   opacity: 1;
+  background: rgba(0,0,0,0.05);
 }
-.sticky-note-drag {
-  color: rgba(0,0,0,0.35);
-  cursor: grab;
-  padding: 3px 4px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  transition: background 0.12s;
-  flex-shrink: 0;
-}
-.sticky-note-drag:hover {
-  background: rgba(0,0,0,0.08);
-}
-.sticky-note-drag:active { cursor: grabbing; }
 .sticky-note-colors {
   display: flex;
   gap: 4px;
@@ -2215,11 +2205,7 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   height: auto;
 }
 .sticky-note-textarea::placeholder { color: rgba(0,0,0,0.3); }
-/* Note: no dark-mode color override — note backgrounds are always light */
-[data-theme="dark"] .sticky-note-drag { color: rgba(255,255,255,0.4); }
-[data-theme="dark"] .sticky-note-delete { color: rgba(255,255,255,0.4); }
-[data-theme="dark"] .sticky-note-fold { color: rgba(255,255,255,0.4); }
-[data-theme="dark"] .sticky-note-color-swatch.active { border-color: rgba(255,255,255,0.4); }
+/* Note backgrounds are always light pastels — keep all controls dark regardless of theme */
 
 /* ── Fold / collapse toggle ─────────────────────────────── */
 .sticky-note-fold {
