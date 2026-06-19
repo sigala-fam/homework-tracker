@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=canvas8" />
+  <link rel="stylesheet" href="style.css?v=canvas9" />
 </head>
 <body>
 
@@ -168,6 +168,34 @@
   <div id="boardView" class="board-view hidden">
     <div class="board-canvas" id="boardCanvas">
       <div class="board-columns" id="boardColumns"></div>
+    </div>
+
+    <!-- Empty-board picker — shown only when the board has no columns -->
+    <div class="board-empty-state hidden" id="boardEmptyState">
+      <p class="board-empty-title">How do you want to set up this board?</p>
+      <p class="board-empty-sub">Pick a layout to start — you can always rename, add, or remove columns later.</p>
+      <div class="board-empty-templates">
+        <button class="board-empty-tpl" data-tpl="school">
+          <span class="tpl-icon">🏫</span>
+          <span class="tpl-name">School</span>
+          <span class="tpl-desc">A-Day · B-Day</span>
+        </button>
+        <button class="board-empty-tpl" data-tpl="weekly">
+          <span class="tpl-icon">📅</span>
+          <span class="tpl-name">Weekly</span>
+          <span class="tpl-desc">Mon · Tue · Wed · Thu · Fri</span>
+        </button>
+        <button class="board-empty-tpl" data-tpl="kanban">
+          <span class="tpl-icon">✅</span>
+          <span class="tpl-name">Project</span>
+          <span class="tpl-desc">To Do · In Progress · Done</span>
+        </button>
+        <button class="board-empty-tpl" data-tpl="blank">
+          <span class="tpl-icon">➕</span>
+          <span class="tpl-name">Blank</span>
+          <span class="tpl-desc">Add your own columns</span>
+        </button>
+      </div>
     </div>
     <!-- Zoom controls -->
     <div class="canvas-controls" id="canvasControls">

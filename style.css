@@ -2589,6 +2589,74 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 }
 .current-board-name.hidden { display: none; }
 
+/* ── Empty-board template picker ───────────────────────── */
+.board-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 32px 20px;
+  pointer-events: none; /* let canvas pan through the background */
+}
+.board-empty-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 8px;
+  text-align: center;
+  letter-spacing: -0.3px;
+}
+.board-empty-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 28px;
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.5;
+}
+.board-empty-templates {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  pointer-events: all;
+}
+.board-empty-tpl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 120px;
+  padding: 20px 12px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+  font-family: inherit;
+}
+.board-empty-tpl:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-3px);
+}
+.board-empty-tpl:active { transform: translateY(-1px); }
+.tpl-icon { font-size: 32px; line-height: 1; display: block; }
+.tpl-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+.tpl-desc {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
 /* ── Canvas Tables ─────────────────────────────────────── */
 .canvas-table {
   position: absolute;

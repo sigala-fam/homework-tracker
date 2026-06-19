@@ -44,10 +44,8 @@ const CLUBS = {
 const PERSONAL_COLOR = '#EC4899';
 
 // ── Columns ───────────────────────────────────────────────
-const DEFAULT_COLUMNS = [
-  { id: 'a', label: 'A-Day', color: '#6366F1' },
-  { id: 'b', label: 'B-Day', color: '#059669' },
-];
+// New boards start empty — user picks a template on first open
+const DEFAULT_COLUMNS = [];
 
 // ── State ─────────────────────────────────────────────────
 // (populated from Firestore after login — defaults shown until then)
@@ -585,6 +583,10 @@ function initCanvasInteractions() {
 
 // ── Board ─────────────────────────────────────────────────
 function renderBoard() {
+  // Show/hide the empty-board template picker
+  const emptyState = document.getElementById('boardEmptyState');
+  if (emptyState) emptyState.classList.toggle('hidden', columns.length > 0);
+
   initColumnPositions();
   const container = document.getElementById('boardColumns');
 
@@ -3684,6 +3686,46 @@ async function loadUserData() {
   }
 }
 
+// ── Board layout templates ────────────────────────────────
+const BOARD_TEMPLATES = {
+  school: [
+    { label: 'A-Day', color: '#6366F1' },
+    { label: 'B-Day', color: '#059669' },
+  ],
+  weekly: [
+    { label: 'Monday',    color: '#6366F1' },
+    { label: 'Tuesday',   color: '#059669' },
+    { label: 'Wednesday', color: '#F59E0B' },
+    { label: 'Thursday',  color: '#EC4899' },
+    { label: 'Friday',    color: '#8B5CF6' },
+  ],
+  kanban: [
+    { label: 'To Do',       color: '#6366F1' },
+    { label: 'In Progress', color: '#F59E0B' },
+    { label: 'Done',        color: '#059669' },
+  ],
+};
+
+function applyBoardTemplate(tplKey) {
+  if (tplKey === 'blank') {
+    // Show the add-column form so they can name their first column
+    showAddColumnForm();
+    return;
+  }
+  const tpl = BOARD_TEMPLATES[tplKey];
+  if (!tpl) return;
+  const startX = 40, gap = 334;
+  columns = tpl.map((col, i) => ({
+    id:    genId(),
+    label: col.label,
+    color: col.color,
+    x:     startX + i * gap,
+    y:     40,
+  }));
+  saveColumns();
+  renderBoard();
+}
+
 // ── One-time app setup (called once per login session) ────
 function initApp() {
   if (appSetupDone) return;
@@ -3694,6 +3736,12 @@ function initApp() {
   initCanvasInteractions();
   initToolbar();
   initConnectMode();
+
+  // Wire up the empty-board template picker (event delegation — safe to call once)
+  document.getElementById('boardEmptyState')?.addEventListener('click', e => {
+    const btn = e.target.closest('.board-empty-tpl');
+    if (btn) applyBoardTemplate(btn.dataset.tpl);
+  });
 }
 
 // ── Open a board ──────────────────────────────────────────
@@ -3711,11 +3759,9 @@ async function openBoard(boardId) {
     canvasTables = d.canvasTables || [];
     canvasImages  = d.canvasImages  || [];
   } else {
-    // New board — start with defaults
-    columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
-    subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
-    tasks = []; events = []; stickyNotes = []; connections = [];
-    canvasTables = []; canvasImages = [];
+    // Brand-new board — start completely empty; user picks a template
+    columns = []; subjects = []; tasks = []; events = [];
+    stickyNotes = []; connections = []; canvasTables = []; canvasImages = [];
     await setDoc(boardDocRef(boardId), { columns, subjects, tasks, events, stickyNotes, connections, canvasTables, canvasImages });
   }
 
