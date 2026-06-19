@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=canvas1" />
 </head>
 <body>
 
@@ -142,7 +142,17 @@
 
   <!-- ── Board View ── -->
   <div id="boardView" class="board-view">
-    <div class="board-columns" id="boardColumns"></div>
+    <div class="board-canvas" id="boardCanvas">
+      <div class="board-columns" id="boardColumns"></div>
+    </div>
+    <!-- Zoom controls -->
+    <div class="canvas-controls" id="canvasControls">
+      <button class="canvas-ctrl-btn" id="canvasZoomIn"  title="Zoom in">＋</button>
+      <button class="canvas-ctrl-btn canvas-ctrl-zoom-label" id="canvasZoomLabel">100%</button>
+      <button class="canvas-ctrl-btn" id="canvasZoomOut" title="Zoom out">－</button>
+      <div class="canvas-ctrl-divider"></div>
+      <button class="canvas-ctrl-btn" id="canvasReset"  title="Reset view">⊙</button>
+    </div>
   </div>
 
   <!-- ── Calendar View ── -->

@@ -384,21 +384,72 @@ body {
 ══════════════════════════════ */
 .board-view {
   height: calc(100vh - 84px);
-  overflow: auto;
-  padding: 20px;
+  overflow: hidden;
+  position: relative;
+  padding: 0;
+  cursor: default;
 }
+/* The moveable canvas layer — transformed by JS */
+.board-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/* The columns wrapper sits inside the canvas and is a positioning context */
 .board-columns {
-  display: flex;
-  gap: 16px;
-  width: max-content;
-  min-width: 100%;
-  align-items: flex-start;
+  position: absolute;
+  top: 0; left: 0;
+  width: 4000px;
+  height: 4000px;
 }
 
-/* Column — minimal warm container; class cards do the visual work */
-.board-column {
-  width: 310px;
+/* Canvas zoom controls — floating pill in the bottom-right */
+.canvas-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 4px 6px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  user-select: none;
+}
+.canvas-ctrl-btn {
+  background: none; border: none;
+  color: var(--text-2);
+  font-size: 15px; font-weight: 700;
+  width: 30px; height: 30px;
+  border-radius: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.14s, color 0.14s;
+  line-height: 1;
+}
+.canvas-ctrl-btn:hover { background: var(--surface-3); color: var(--text); }
+.canvas-ctrl-zoom-label {
+  font-size: 11px; font-weight: 700;
+  width: 44px; cursor: default;
+  color: var(--muted); letter-spacing: 0.02em;
+}
+.canvas-ctrl-zoom-label:hover { background: none; color: var(--muted); }
+.canvas-ctrl-divider {
+  width: 1px; height: 18px;
+  background: var(--border);
+  margin: 0 3px;
   flex-shrink: 0;
+}
+
+/* Column — absolutely placed on the infinite canvas */
+.board-column {
+  position: absolute;
+  width: 310px;
   background: var(--col-bg);
   background: color-mix(in srgb, var(--col-tint, transparent) 18%, var(--col-bg));
   border-radius: var(--radius);
@@ -406,6 +457,7 @@ body {
   display: flex;
   flex-direction: column;
   transition: background 0.4s, border-color 0.4s;
+  box-shadow: var(--shadow-card);
 }
 
 .column-header {
@@ -468,12 +520,9 @@ body {
 .col-drag-handle:active { cursor: grabbing; }
 
 .board-column.col-dragging {
-  opacity: 0.35;
-  pointer-events: none;
-}
-.board-column.col-drag-over {
-  outline: 2px dashed var(--accent);
-  outline-offset: 3px;
+  opacity: 0.75;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
 }
 
 .column-header-actions { display: flex; gap: 3px; margin-left: auto; }
@@ -550,9 +599,10 @@ body {
   border-color: var(--accent);
 }
 
-/* Add-column placeholder column */
+/* Add-column placeholder — floats near the rightmost column */
 .column-add-col {
-  width: 280px; flex-shrink: 0;
+  position: absolute;
+  width: 200px;
   border: 2px dashed var(--border);
   border-radius: var(--radius);
   display: flex; flex-direction: column;
@@ -1913,7 +1963,7 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   #openSettings, #openCustomize { display: none; }
 
   /* Board — allow horizontal scroll as before, just less padding */
-  .board-view { padding: 12px 10px; }
+  .board-view { padding: 0; }
   .board-column { width: 270px; }
 
   /* Calendar — stack panel + sidebar vertically */

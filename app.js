@@ -56,8 +56,15 @@ let events   = [];
 let theme    = localStorage.getItem('hw-theme') || 'light';
 
 let activeView  = 'board';
-let dragSrcColId = null;
 let planSubView = 'ranked';   // 'ranked' | 'schedule' | 'stats'
+
+// ── Canvas state ──────────────────────────────────────────
+let canvasZoom  = 1;
+let canvasPanX  = 40;
+let canvasPanY  = 40;
+const ZOOM_MIN  = 0.25;
+const ZOOM_MAX  = 2.0;
+const ZOOM_STEP = 0.15;
 let calView     = 'monthly';
 let calDate     = new Date();
 let selectedDay = null;
@@ -375,18 +382,120 @@ function populateSubjectDropdown() {
 }
 
 
+// ── Canvas helpers ────────────────────────────────────────
+function initColumnPositions() {
+  columns.forEach((col, i) => {
+    if (typeof col.x !== 'number') col.x = 40 + i * 330;
+    if (typeof col.y !== 'number') col.y = 40;
+  });
+}
+
+function applyCanvasTransform() {
+  const canvas = document.getElementById('boardCanvas');
+  if (canvas) canvas.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px) scale(${canvasZoom})`;
+  const label = document.getElementById('canvasZoomLabel');
+  if (label) label.textContent = Math.round(canvasZoom * 100) + '%';
+}
+
+function saveCanvasState() {
+  if (!currentUser) return;
+  localStorage.setItem(`hw-canvas-${currentUser.uid}`,
+    JSON.stringify({ zoom: canvasZoom, panX: canvasPanX, panY: canvasPanY }));
+}
+
+function loadCanvasState() {
+  if (!currentUser) return;
+  const s = JSON.parse(localStorage.getItem(`hw-canvas-${currentUser.uid}`) || 'null');
+  if (s) {
+    canvasZoom = typeof s.zoom  === 'number' ? s.zoom  : 1;
+    canvasPanX = typeof s.panX  === 'number' ? s.panX  : 40;
+    canvasPanY = typeof s.panY  === 'number' ? s.panY  : 40;
+  } else {
+    canvasZoom = 1; canvasPanX = 40; canvasPanY = 40;
+  }
+}
+
+function zoomAtPoint(newZoom, px, py) {
+  newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+  const cx = (px - canvasPanX) / canvasZoom;
+  const cy = (py - canvasPanY) / canvasZoom;
+  canvasZoom = newZoom;
+  canvasPanX = px - cx * newZoom;
+  canvasPanY = py - cy * newZoom;
+  applyCanvasTransform();
+  saveCanvasState();
+}
+
+function initCanvasInteractions() {
+  const boardView = document.getElementById('boardView');
+
+  // ── Wheel to zoom ─────────────────────────────────────
+  boardView.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect  = boardView.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const delta  = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+    zoomAtPoint(canvasZoom + delta, mouseX, mouseY);
+  }, { passive: false });
+
+  // ── Drag on empty space to pan ────────────────────────
+  boardView.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.board-column') ||
+        e.target.closest('.column-add-col') ||
+        e.target.closest('.canvas-controls')) return;
+
+    e.preventDefault();
+    const startX = e.clientX - canvasPanX;
+    const startY = e.clientY - canvasPanY;
+    boardView.style.cursor = 'grabbing';
+
+    function onMove(ev) {
+      canvasPanX = ev.clientX - startX;
+      canvasPanY = ev.clientY - startY;
+      applyCanvasTransform();
+    }
+    function onUp() {
+      boardView.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup',   onUp);
+      saveCanvasState();
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onUp);
+  });
+
+  // ── Zoom control buttons ──────────────────────────────
+  document.getElementById('canvasZoomIn').addEventListener('click', () => {
+    const v = document.getElementById('boardView').getBoundingClientRect();
+    zoomAtPoint(canvasZoom + ZOOM_STEP, v.width / 2, v.height / 2);
+  });
+  document.getElementById('canvasZoomOut').addEventListener('click', () => {
+    const v = document.getElementById('boardView').getBoundingClientRect();
+    zoomAtPoint(canvasZoom - ZOOM_STEP, v.width / 2, v.height / 2);
+  });
+  document.getElementById('canvasReset').addEventListener('click', () => {
+    canvasZoom = 1; canvasPanX = 40; canvasPanY = 40;
+    applyCanvasTransform();
+    saveCanvasState();
+  });
+}
+
 // ── Board ─────────────────────────────────────────────────
 function renderBoard() {
+  initColumnPositions();
   const container = document.getElementById('boardColumns');
 
   container.innerHTML = columns.map(col => {
     const subtitle = subjects.filter(s => s.day === col.id).map(s => escHtml(s.label)).join(' · ') || 'No classes';
     const initial  = col.label.charAt(0).toUpperCase();
     return `
-      <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)}">
+      <div class="board-column" data-col="${col.id}"
+           style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)};left:${col.x}px;top:${col.y}px">
         <div class="column-header">
           <div class="column-title-row">
-            <div class="col-drag-handle" title="Drag to reorder">
+            <div class="col-drag-handle" title="Drag to move">
               <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/><circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/><circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/></svg>
             </div>
             <span class="day-pill day-pill-btn" data-id="${col.id}" style="background:${col.color}" title="Click to change color">${escHtml(initial)}</span>
@@ -402,8 +511,13 @@ function renderBoard() {
         <div class="column-body" id="col-${col.id}"></div>
         <button class="column-add-class-btn" data-day="${col.id}">＋ Add class</button>
       </div>`;
-  }).join('') + `
-    <div class="column-add-col" id="addColumnBtn">
+  }).join('');
+
+  // Place the "+ Add column" button to the right of all existing columns
+  const addColX = columns.length > 0 ? Math.max(...columns.map(c => c.x + 310)) + 24 : 40;
+  const addColY = columns.length > 0 ? Math.min(...columns.map(c => c.y)) : 40;
+  container.innerHTML += `
+    <div class="column-add-col" id="addColumnBtn" style="left:${addColX}px;top:${addColY}px">
       <span class="column-add-col-icon">＋</span>
       <span class="column-add-col-label">Add column</span>
     </div>`;
@@ -432,54 +546,53 @@ function renderBoard() {
   );
   document.getElementById('addColumnBtn').addEventListener('click', showAddColumnForm);
 
-  // ── Column drag-to-reorder ──────────────────────────────
+  // ── Column free-drag on infinite canvas ────────────────
   container.querySelectorAll('.board-column').forEach(colEl => {
-    const colId = colEl.dataset.col;
+    const colId  = colEl.dataset.col;
+    const handle = colEl.querySelector('.col-drag-handle');
+    if (!handle) return;
 
-    // Only allow drag when the grip handle is grabbed
-    colEl.addEventListener('mousedown', e => {
-      colEl.setAttribute('draggable', e.target.closest('.col-drag-handle') ? 'true' : 'false');
-    });
-
-    colEl.addEventListener('dragstart', e => {
-      dragSrcColId = colId;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', colId);
-      // Small delay so the ghost renders before we fade the original
-      requestAnimationFrame(() => colEl.classList.add('col-dragging'));
-    });
-
-    colEl.addEventListener('dragend', () => {
-      dragSrcColId = null;
-      colEl.classList.remove('col-dragging');
-      container.querySelectorAll('.board-column').forEach(c => c.classList.remove('col-drag-over'));
-    });
-
-    colEl.addEventListener('dragover', e => {
+    handle.addEventListener('mousedown', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      if (dragSrcColId && dragSrcColId !== colId) colEl.classList.add('col-drag-over');
-    });
+      e.stopPropagation(); // prevent canvas pan from firing
 
-    colEl.addEventListener('dragleave', e => {
-      if (!colEl.contains(e.relatedTarget)) colEl.classList.remove('col-drag-over');
-    });
+      const col = columns.find(c => c.id === colId);
+      if (!col) return;
 
-    colEl.addEventListener('drop', e => {
-      e.preventDefault();
-      if (!dragSrcColId || dragSrcColId === colId) return;
-      colEl.classList.remove('col-drag-over');
-      const srcIdx = columns.findIndex(c => c.id === dragSrcColId);
-      const tgtIdx = columns.findIndex(c => c.id === colId);
-      if (srcIdx !== -1 && tgtIdx !== -1) {
-        const [moved] = columns.splice(srcIdx, 1);
-        columns.splice(tgtIdx, 0, moved);
-        saveColumns();
-        renderBoard();
+      colEl.classList.add('col-dragging');
+      const startMouseX = e.clientX;
+      const startMouseY = e.clientY;
+      const startColX   = col.x;
+      const startColY   = col.y;
+
+      function onMove(ev) {
+        const dx = (ev.clientX - startMouseX) / canvasZoom;
+        const dy = (ev.clientY - startMouseY) / canvasZoom;
+        col.x = startColX + dx;
+        col.y = startColY + dy;
+        colEl.style.left = col.x + 'px';
+        colEl.style.top  = col.y + 'px';
       }
+
+      function onUp() {
+        colEl.classList.remove('col-dragging');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup',   onUp);
+        saveColumns();
+        // Nudge the "Add column" button to follow
+        const addBtn = document.getElementById('addColumnBtn');
+        if (addBtn) {
+          addBtn.style.left = (Math.max(...columns.map(c => c.x + 310)) + 24) + 'px';
+          addBtn.style.top  = Math.min(...columns.map(c => c.y)) + 'px';
+        }
+      }
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup',   onUp);
     });
   });
 
+  applyCanvasTransform();
   renderStatusLine();
 }
 
@@ -2554,7 +2667,9 @@ function initApp() {
   document.getElementById('devBadge').classList.toggle('hidden', !s.devMode);
   document.getElementById('btnStats').classList.toggle('hidden',  !s.devMode);
   renderProfileInfo();
+  loadCanvasState();
   renderBoard();
+  initCanvasInteractions();
 }
 
 // ── Sign-out button ───────────────────────────────────────
