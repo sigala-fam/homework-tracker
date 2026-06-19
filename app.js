@@ -492,6 +492,10 @@ function getAnchorPoint(id, type) {
     const s = subjects.find(s => s.id === id);
     return s ? { x: (s.floatX || 0) + 140, y: (s.floatY || 0) + 30 } : { x: 0, y: 0 };
   }
+  if (type === 'table') {
+    const t = canvasTables.find(t => t.id === id);
+    return t ? { x: (t.x || 0) + 150, y: (t.y || 0) + 40 } : { x: 0, y: 0 };
+  }
   return { x: 0, y: 0 };
 }
 
@@ -651,11 +655,7 @@ function renderBoard() {
     // Clicking anywhere on a column brings it in front of any overlapping ones.
     // Uses capture phase so it fires before children stop propagation.
     colEl.addEventListener('mousedown', e => {
-      if (connectMode) {
-        e.stopPropagation();
-        handleConnectClick(colId, 'column');
-        return;
-      }
+      if (connectMode) return;  // handled by boardView capture in initConnectMode
       bringColToFront(colId);
     }, { capture: true });
 
@@ -821,11 +821,6 @@ function renderStickyNotes() {
       renderConnections();
     });
 
-    // ── Connect-mode: clicking note selects it as source/target
-    el.addEventListener('mousedown', e => {
-      if (connectMode) { e.stopPropagation(); handleConnectClick(note.id, 'note'); return; }
-    });
-
     // ── Drag via handle
     const handle = el.querySelector('.sticky-note-drag');
     handle.addEventListener('mousedown', e => {
@@ -973,10 +968,6 @@ function renderCanvasTables() {
       window.addEventListener('mouseup',   onUp);
     });
 
-    // ── Connect mode
-    el.addEventListener('mousedown', e => {
-      if (connectMode) { e.stopPropagation(); handleConnectClick(tbl.id, 'table'); }
-    });
   });
 }
 
@@ -1098,15 +1089,7 @@ function renderConnections() {
   });
 }
 
-function getConnectableElement(id, type) {
-  const map = {
-    column:       `.board-column[data-col="${id}"]`,
-    note:         `.sticky-note[data-note-id="${id}"]`,
-    floatTask:    `.floating-task[data-task-id="${id}"]`,
-    floatSubject: `.floating-subject[data-subj-id="${id}"]`,
-  };
-  return map[type] ? document.querySelector(map[type]) : null;
-}
+
 
 function enterConnectMode() {
   connectMode   = true;
@@ -1125,32 +1108,19 @@ function exitConnectMode() {
     el.classList.remove('connect-source-highlight'));
 }
 
-function handleConnectClick(id, type) {
-  if (!connectMode) return;
-  if (!connectSource) {
-    // First click: mark as source
-    connectSource = { id, type };
-    getConnectableElement(id, type)?.classList.add('connect-source-highlight');
-  } else if (connectSource.id !== id) {
-    // Second click on a different element: create connection
-    const dupe = connections.some(c =>
-      (c.fromId === connectSource.id && c.toId === id) ||
-      (c.fromId === id && c.toId === connectSource.id)
-    );
-    if (!dupe) {
-      connections.push({
-        id: genId(),
-        fromId:   connectSource.id,
-        fromType: connectSource.type,
-        toId:     id,
-        toType:   type,
-      });
-      saveConnections();
-    }
-    exitConnectMode();
-    renderConnections();
-  }
-  // Clicking the same element twice: do nothing (ignore self-loops)
+// ── getConnectTarget: find the connectable element wrapping a DOM node ──────
+function getConnectTarget(el) {
+  const col   = el?.closest('.board-column');
+  const note  = el?.closest('.sticky-note');
+  const table = el?.closest('.canvas-table');
+  const fTask = el?.closest('.floating-task');
+  const fSubj = el?.closest('.floating-subject');
+  if (col)   return { el: col,   id: col.dataset.col,       type: 'column' };
+  if (note)  return { el: note,  id: note.dataset.noteId,   type: 'note' };
+  if (table) return { el: table, id: table.dataset.tableId, type: 'table' };
+  if (fTask) return { el: fTask, id: fTask.dataset.taskId,  type: 'floatTask' };
+  if (fSubj) return { el: fSubj, id: fSubj.dataset.subjId,  type: 'floatSubject' };
+  return null;
 }
 
 function initConnectMode() {
@@ -1159,44 +1129,88 @@ function initConnectMode() {
 
   const boardView = document.getElementById('boardView');
 
-  // Preview line follows cursor while source is selected
-  boardView.addEventListener('mousemove', e => {
-    if (!connectMode || !connectSource) return;
-    const svg = document.getElementById('connectionsSvg');
-    if (!svg) return;
-    svg.querySelector('.preview-line')?.remove();
-    const pos  = screenToCanvas(e.clientX, e.clientY);
-    const from = getAnchorPoint(connectSource.id, connectSource.type);
-    const cpY  = Math.max(60, Math.abs(pos.y - from.y) * 0.4);
-    const d    = `M ${from.x} ${from.y} C ${from.x} ${from.y + cpY}, ${pos.x} ${pos.y - cpY}, ${pos.x} ${pos.y}`;
-    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    preview.setAttribute('d', d);
-    preview.setAttribute('class', 'preview-line');
-    svg.appendChild(preview);
-  });
-
-  // Escape cancels connect mode
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && connectMode) exitConnectMode();
-  });
-
-  // Clicking empty canvas space clears the pending source (but stays in connect mode)
+  // ── Drag-to-connect: mousedown on any connectable element starts a line ──
   boardView.addEventListener('mousedown', e => {
-    if (!connectMode) return;
-    if (!e.target.closest('.board-column')    &&
-        !e.target.closest('.sticky-note')     &&
-        !e.target.closest('.floating-task')   &&
-        !e.target.closest('.floating-subject') &&
-        !e.target.closest('.canvas-table')    &&
-        !e.target.closest('.canvas-image')) {
-      // Clear source selection; deselect any line
-      document.querySelectorAll('.connect-source-highlight').forEach(el =>
-        el.classList.remove('connect-source-highlight'));
-      connectSource = null;
-      selectedConnectionId = null;
+    if (!connectMode || e.button !== 0) return;
+    const source = getConnectTarget(e.target);
+    if (!source) return;
+
+    e.preventDefault();
+    e.stopPropagation();   // capture fires first — prevents element's own handlers
+
+    connectSource = { id: source.id, type: source.type };
+    source.el.classList.add('connect-source-highlight');
+    let hoveredDrop = null;
+
+    function drawPreview(clientX, clientY) {
+      const svg = document.getElementById('connectionsSvg');
+      if (!svg) return;
+      svg.querySelector('.preview-line')?.remove();
+      const pos  = screenToCanvas(clientX, clientY);
+      const from = getAnchorPoint(source.id, source.type);
+      const dy   = pos.y - from.y;
+      const cpY  = Math.max(60, Math.abs(dy) * 0.4);
+      const d    = `M ${from.x} ${from.y} C ${from.x} ${from.y + cpY}, ${pos.x} ${pos.y - cpY}, ${pos.x} ${pos.y}`;
+      const preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      preview.setAttribute('d', d);
+      preview.setAttribute('class', 'preview-line');
+      svg.appendChild(preview);
+    }
+
+    function onMove(ev) {
+      drawPreview(ev.clientX, ev.clientY);
+      // Highlight potential drop target as user hovers over it
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const drop  = getConnectTarget(under);
+      if (hoveredDrop && hoveredDrop.el !== source.el) {
+        hoveredDrop.el.classList.remove('connect-drop-highlight');
+      }
+      if (drop && drop.id !== source.id) {
+        drop.el.classList.add('connect-drop-highlight');
+        hoveredDrop = drop;
+      } else {
+        hoveredDrop = null;
+      }
+    }
+
+    function onUp(ev) {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup',   onUp);
+      // Clean up visual state
       document.getElementById('connectionsSvg')?.querySelector('.preview-line')?.remove();
+      document.querySelectorAll('.connect-source-highlight, .connect-drop-highlight')
+        .forEach(el => el.classList.remove('connect-source-highlight', 'connect-drop-highlight'));
+
+      // Find element under release point
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const drop  = getConnectTarget(under);
+      if (drop && drop.id !== source.id) {
+        const dupe = connections.some(c =>
+          (c.fromId === source.id && c.toId === drop.id) ||
+          (c.fromId === drop.id   && c.toId === source.id)
+        );
+        if (!dupe) {
+          connections.push({
+            id:       genId(),
+            fromId:   source.id,
+            fromType: source.type,
+            toId:     drop.id,
+            toType:   drop.type,
+          });
+          saveConnections();
+        }
+      }
+      connectSource = null;
       renderConnections();
     }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onUp);
+  }, { capture: true });
+
+  // Escape cancels connect mode entirely
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && connectMode) exitConnectMode();
   });
 }
 
@@ -1513,9 +1527,6 @@ function renderFloatingItems() {
     container.appendChild(el);
 
     // Events
-    el.addEventListener('mousedown', e => {
-      if (connectMode) { e.stopPropagation(); handleConnectClick(subj.id, 'floatSubject'); return; }
-    });
     el.querySelector('.floating-subject-unpin').addEventListener('click', e => {
       e.stopPropagation();
       subj.floated = false; subj.floatX = null; subj.floatY = null;
@@ -1563,9 +1574,6 @@ function renderFloatingItems() {
 
     container.appendChild(el);
 
-    el.addEventListener('mousedown', e => {
-      if (connectMode) { e.stopPropagation(); handleConnectClick(task.id, 'floatTask'); return; }
-    });
     el.querySelector('.card-checkbox').addEventListener('change', () => handleCheck(task.id));
     el.querySelector('.floating-task-unpin').addEventListener('click', e => {
       e.stopPropagation();

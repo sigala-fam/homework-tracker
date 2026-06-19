@@ -2297,17 +2297,24 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 /* Dashed outline on all connectable elements in connect mode */
 .connect-mode-active .board-column,
 .connect-mode-active .sticky-note,
+.connect-mode-active .canvas-table,
 .connect-mode-active .floating-task,
 .connect-mode-active .floating-subject {
-  cursor: pointer;
+  cursor: crosshair;
   outline: 1.5px dashed rgba(109,40,217,0.4);
   outline-offset: 3px;
 }
-/* Solid highlight on selected source element */
+/* Solid purple ring on the element being dragged from */
 .connect-source-highlight {
   outline: 2.5px solid var(--accent) !important;
   outline-offset: 3px !important;
   box-shadow: 0 0 0 4px rgba(109,40,217,0.12) !important;
+}
+/* Green ring on a valid drop target while hovering over it */
+.connect-drop-highlight {
+  outline: 2.5px solid #059669 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 4px rgba(5,150,105,0.12) !important;
 }
 
 /* ══════════════════════════════════════════════════════════
