@@ -624,11 +624,11 @@ body {
 
 /* Inline new-column form */
 .new-column-form {
-  width: 280px; flex-shrink: 0;
+  width: 280px;
   background: var(--surface); border: 1.5px solid var(--accent);
   border-radius: var(--radius); padding: 16px;
   display: flex; flex-direction: column; gap: 10px;
-  align-self: flex-start;
+  box-shadow: var(--shadow);
 }
 .new-column-form-title { font-size: 13px; font-weight: 800; color: var(--text); }
 .new-column-form-row { display: flex; gap: 7px; align-items: center; }

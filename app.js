@@ -752,6 +752,10 @@ function showAddColumnForm() {
   const addBtn = document.getElementById('addColumnBtn');
   const form = document.createElement('div');
   form.className = 'new-column-form';
+  // Carry over the absolute canvas position from the button being replaced
+  form.style.position = 'absolute';
+  form.style.left = addBtn.style.left;
+  form.style.top  = addBtn.style.top;
   form.innerHTML = `
     <span class="new-column-form-title">New Column</span>
     <div class="new-column-form-row">
