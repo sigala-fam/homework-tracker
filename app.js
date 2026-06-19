@@ -2391,7 +2391,7 @@ function detectBgBrightness(bg) {
 function applyBg(bg) {
   const boardView = document.getElementById('boardView');
 
-  // Always clear both targets first
+  // Always clear both targets
   document.body.style.background = '';
   document.body.style.backgroundSize = '';
   document.body.style.backgroundPosition = '';
@@ -2406,16 +2406,13 @@ function applyBg(bg) {
   if (!bg) return;
 
   if (bg.startsWith('url(')) {
-    // Photo/image → apply only to the board canvas area, not the header.
-    // This keeps the header clean and ensures the image fills the visible
-    // workspace at full quality regardless of canvas zoom level.
-    if (boardView) {
-      boardView.style.background = bg;
-      boardView.style.backgroundSize = 'cover';
-      boardView.style.backgroundPosition = 'center';
-    }
+    // Photo/image → full page, fixed to the viewport so it stays still
+    // as the canvas pans and zooms (columns float over it like cards on a desk)
+    document.body.style.background = bg;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundAttachment = 'fixed';
   } else {
-    // Solid colour or gradient → apply to the full page (looks best)
     document.body.style.background = bg;
   }
   document.body.setAttribute('data-bg', detectBgBrightness(bg));
