@@ -65,6 +65,11 @@ let canvasPanY  = 40;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 2.0;
 const ZOOM_STEP = 0.15;
+
+// ── Column z-order (in-memory, not persisted) ─────────────
+// Clicking any column brings it to the front above overlapping ones
+const colZOrder   = new Map(); // colId → z-index number
+let   colZCounter = 1;
 let calView     = 'monthly';
 let calDate     = new Date();
 let selectedDay = null;
@@ -415,6 +420,14 @@ function loadCanvasState() {
   }
 }
 
+function bringColToFront(colId) {
+  colZCounter++;
+  colZOrder.set(colId, colZCounter);
+  // Update the live element directly — no re-render needed
+  const el = document.querySelector(`.board-column[data-col="${colId}"]`);
+  if (el) el.style.zIndex = colZCounter;
+}
+
 function zoomAtPoint(newZoom, px, py) {
   newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
   const cx = (px - canvasPanX) / canvasZoom;
@@ -501,9 +514,10 @@ function renderBoard() {
   container.innerHTML = columns.map(col => {
     const subtitle = subjects.filter(s => s.day === col.id).map(s => escHtml(s.label)).join(' · ') || 'No classes';
     const initial  = col.label.charAt(0).toUpperCase();
+    const zIdx     = colZOrder.get(col.id) || 1;
     return `
       <div class="board-column" data-col="${col.id}"
-           style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)};left:${col.x}px;top:${col.y}px">
+           style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)};left:${col.x}px;top:${col.y}px;z-index:${zIdx}">
         <div class="column-header">
           <div class="column-title-row">
             <div class="col-drag-handle" title="Drag to move">
@@ -560,6 +574,11 @@ function renderBoard() {
   // ── Column free-drag on infinite canvas ────────────────
   container.querySelectorAll('.board-column').forEach(colEl => {
     const colId  = colEl.dataset.col;
+
+    // Clicking anywhere on a column brings it in front of any overlapping ones.
+    // Uses capture phase so it fires before children stop propagation.
+    colEl.addEventListener('mousedown', () => bringColToFront(colId), { capture: true });
+
     const handle = colEl.querySelector('.col-drag-handle');
     if (!handle) return;
 
@@ -571,6 +590,8 @@ function renderBoard() {
       if (!col) return;
 
       colEl.classList.add('col-dragging');
+      colEl.style.zIndex = 9999; // on top of everything while dragging
+
       const startMouseX = e.clientX;
       const startMouseY = e.clientY;
       const startColX   = col.x;
@@ -587,6 +608,8 @@ function renderBoard() {
 
       function onUp() {
         colEl.classList.remove('col-dragging');
+        // Restore to its bring-to-front z-index (already the highest from click)
+        colEl.style.zIndex = colZOrder.get(colId) || 1;
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup',   onUp);
         saveColumns();
