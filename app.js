@@ -7,6 +7,7 @@ import { getAuth, onAuthStateChanged, signOut, updateProfile,
          createUserWithEmailAndPassword,
          sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
@@ -18,9 +19,10 @@ const firebaseConfig = {
   measurementId:     'G-Y67CG1QKTZ',
 };
 
-const fbApp = initializeApp(firebaseConfig);
-const auth  = getAuth(fbApp);
-const db    = getFirestore(fbApp);
+const fbApp   = initializeApp(firebaseConfig);
+const auth    = getAuth(fbApp);
+const db      = getFirestore(fbApp);
+const storage = getStorage(fbApp);
 let currentUser = null;
 
 // ── Default Subjects ─────────────────────────────────────
@@ -84,6 +86,10 @@ let connectModeListenersInitialized = false;
 // ── Multi-board state ─────────────────────────────────────
 let currentBoardId = null;         // ID of the board currently open
 let boardsMeta     = [];           // [{id, name, emoji, createdAt}] — lives in users/{uid}
+
+// ── Canvas objects ────────────────────────────────────────
+let canvasTables = [];   // {id, x, y, rows, cols, data: [["cell",...], ...], folded}
+let canvasImages  = [];  // {id, x, y, url, w, h}
 let appSetupDone   = false;        // guard: one-time canvas/toolbar init per session
 
 let calView     = 'monthly';
@@ -111,6 +117,8 @@ function saveConnections()  { if (currentUser && currentBoardId) setDoc(boardDoc
 
 // User-level saves (always at users/{uid})
 async function saveBoardsMeta() { if (currentUser) await setDoc(userDocRef(), { boardsMeta }, { merge: true }); }
+function saveCanvasTables() { if (currentUser && currentBoardId) setDoc(boardDocRef(), { canvasTables }, { merge: true }); }
+function saveCanvasImages()  { if (currentUser && currentBoardId) setDoc(boardDocRef(), { canvasImages  }, { merge: true }); }
 function getSettings()  { return JSON.parse(localStorage.getItem('hw-settings') || 'null') || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } }; }
 function saveSettings(s){ localStorage.setItem('hw-settings', JSON.stringify(s)); if (currentUser) setDoc(userDocRef(), { settings: s }, { merge: true }); }
 
@@ -528,10 +536,12 @@ function initCanvasInteractions() {
     if (e.target.closest('.board-column')     ||
         e.target.closest('.column-add-col')   ||
         e.target.closest('.canvas-controls')  ||
-        e.target.closest('.canvas-toolbar')   ||
+        e.target.closest('.tool-sidebar')     ||
         e.target.closest('.sticky-note')      ||
         e.target.closest('.floating-task')    ||
-        e.target.closest('.floating-subject')) return;
+        e.target.closest('.floating-subject') ||
+        e.target.closest('.canvas-table')     ||
+        e.target.closest('.canvas-image')) return;
 
     e.preventDefault();
     const startX = e.clientX - canvasPanX;
@@ -701,7 +711,18 @@ function renderBoard() {
   // Render canvas annotations — always after innerHTML is set above
   renderStickyNotes();
   renderFloatingItems();
+  renderCanvasTables();
+  renderCanvasImages();
   renderConnections();
+}
+
+// ──────────────────────────────────────────────────────────
+// SHARED UTILITIES
+// ──────────────────────────────────────────────────────────
+// Auto-resize a textarea to fit its content (call after appending to DOM)
+function autoResizeTA(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
 }
 
 // ──────────────────────────────────────────────────────────
@@ -756,10 +777,6 @@ function renderStickyNotes() {
     container.appendChild(el);
 
     // Auto-resize textarea to fit content (called after append so scrollHeight is accurate)
-    function autoResizeTA(ta) {
-      ta.style.height = 'auto';
-      ta.style.height = ta.scrollHeight + 'px';
-    }
     autoResizeTA(el.querySelector('textarea'));
 
     // ── Textarea: debounced save + auto-resize + prevent canvas pan
@@ -828,6 +845,182 @@ function renderStickyNotes() {
         window.removeEventListener('mouseup',   onUp);
         saveStickyNotes();
         renderConnections();
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup',   onUp);
+    });
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// CANVAS TABLES
+// ──────────────────────────────────────────────────────────
+function renderCanvasTables() {
+  document.querySelectorAll('#boardColumns .canvas-table').forEach(el => el.remove());
+  const container = document.getElementById('boardColumns');
+  if (!container) return;
+
+  canvasTables.forEach(tbl => {
+    const el = document.createElement('div');
+    el.className = 'canvas-table';
+    el.dataset.tableId = tbl.id;
+    el.style.left   = (tbl.x || 400) + 'px';
+    el.style.top    = (tbl.y || 300) + 'px';
+    el.style.zIndex = '10';
+    if (tbl.folded) el.classList.add('folded');
+
+    // Header row
+    const header = document.createElement('div');
+    header.className = 'canvas-table-header';
+    header.innerHTML = `
+      <div class="canvas-table-drag">${GRIP_SVG}</div>
+      <span class="canvas-table-label">Table</span>
+      <button class="canvas-table-fold"   title="${tbl.folded ? 'Expand' : 'Collapse'}">${CHEVRON_SVG}</button>
+      <button class="canvas-table-delete" title="Delete table">✕</button>`;
+    el.appendChild(header);
+
+    // Cell grid
+    const grid = document.createElement('div');
+    grid.className = 'canvas-table-grid';
+    grid.style.gridTemplateColumns = `repeat(${tbl.cols}, 100px)`;
+    tbl.data.forEach((row, ri) => {
+      row.forEach((cell, ci) => {
+        const inp = document.createElement('input');
+        inp.type  = 'text';
+        inp.className = 'canvas-table-cell';
+        inp.value = cell || '';
+        inp.placeholder = '…';
+        inp.addEventListener('mousedown', e => e.stopPropagation());
+        inp.addEventListener('input', () => {
+          if (!tbl.data[ri]) tbl.data[ri] = [];
+          tbl.data[ri][ci] = inp.value;
+          clearTimeout(inp._saveTimer);
+          inp._saveTimer = setTimeout(() => saveCanvasTables(), 600);
+        });
+        grid.appendChild(inp);
+      });
+    });
+    el.appendChild(grid);
+
+    // + Add row button
+    const addRow = document.createElement('button');
+    addRow.className = 'canvas-table-add-row';
+    addRow.textContent = '+ row';
+    addRow.addEventListener('click', () => {
+      tbl.rows++;
+      tbl.data.push(Array(tbl.cols).fill(''));
+      saveCanvasTables();
+      renderCanvasTables();
+    });
+    el.appendChild(addRow);
+
+    // + Add col button (inside the header)
+    const addCol = document.createElement('button');
+    addCol.className = 'canvas-table-add-col';
+    addCol.textContent = '+ col';
+    addCol.addEventListener('click', () => {
+      tbl.cols++;
+      tbl.data.forEach(row => row.push(''));
+      saveCanvasTables();
+      renderCanvasTables();
+    });
+    header.appendChild(addCol);
+
+    container.appendChild(el);
+
+    // ── Fold toggle
+    header.querySelector('.canvas-table-fold').addEventListener('click', e => {
+      e.stopPropagation();
+      tbl.folded = !tbl.folded;
+      el.classList.toggle('folded', tbl.folded);
+      saveCanvasTables();
+    });
+
+    // ── Delete
+    header.querySelector('.canvas-table-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      canvasTables = canvasTables.filter(t => t.id !== tbl.id);
+      saveCanvasTables();
+      el.remove();
+    });
+
+    // ── Drag via grip handle
+    const grip = header.querySelector('.canvas-table-drag');
+    grip.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startMX = e.clientX, startMY = e.clientY;
+      const startX  = tbl.x, startY = tbl.y;
+      function onMove(ev) {
+        tbl.x = startX + (ev.clientX - startMX) / canvasZoom;
+        tbl.y = startY + (ev.clientY - startMY) / canvasZoom;
+        el.style.left = tbl.x + 'px';
+        el.style.top  = tbl.y + 'px';
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup',   onUp);
+        saveCanvasTables();
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup',   onUp);
+    });
+
+    // ── Connect mode
+    el.addEventListener('mousedown', e => {
+      if (connectMode) { e.stopPropagation(); handleConnectClick(tbl.id, 'table'); }
+    });
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// CANVAS IMAGES
+// ──────────────────────────────────────────────────────────
+function renderCanvasImages() {
+  document.querySelectorAll('#boardColumns .canvas-image').forEach(el => el.remove());
+  const container = document.getElementById('boardColumns');
+  if (!container) return;
+
+  canvasImages.forEach(img => {
+    const el = document.createElement('div');
+    el.className = 'canvas-image';
+    el.dataset.imgId = img.id;
+    el.style.left   = (img.x || 500) + 'px';
+    el.style.top    = (img.y || 300) + 'px';
+    el.style.width  = (img.w || 240) + 'px';
+    el.style.zIndex = '10';
+
+    el.innerHTML = `
+      <div class="canvas-image-header">
+        <div class="canvas-image-drag">${GRIP_SVG}</div>
+        <button class="canvas-image-delete" title="Remove image">✕</button>
+      </div>
+      <img class="canvas-image-img" src="${escHtml(img.url)}" alt="Canvas image" draggable="false" />`;
+    container.appendChild(el);
+
+    // ── Delete
+    el.querySelector('.canvas-image-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      canvasImages = canvasImages.filter(i => i.id !== img.id);
+      saveCanvasImages();
+      el.remove();
+    });
+
+    // ── Drag via grip
+    const grip = el.querySelector('.canvas-image-drag');
+    grip.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const startMX = e.clientX, startMY = e.clientY;
+      const startX = img.x, startY = img.y;
+      function onMove(ev) {
+        img.x = startX + (ev.clientX - startMX) / canvasZoom;
+        img.y = startY + (ev.clientY - startMY) / canvasZoom;
+        el.style.left = img.x + 'px';
+        el.style.top  = img.y + 'px';
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup',   onUp);
+        saveCanvasImages();
       }
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup',   onUp);
@@ -985,7 +1178,9 @@ function initConnectMode() {
     if (!e.target.closest('.board-column')    &&
         !e.target.closest('.sticky-note')     &&
         !e.target.closest('.floating-task')   &&
-        !e.target.closest('.floating-subject')) {
+        !e.target.closest('.floating-subject') &&
+        !e.target.closest('.canvas-table')    &&
+        !e.target.closest('.canvas-image')) {
       // Clear source selection; deselect any line
       document.querySelectorAll('.connect-source-highlight').forEach(el =>
         el.classList.remove('connect-source-highlight'));
@@ -1000,17 +1195,24 @@ function initConnectMode() {
 function initToolbar() {
   const bv = document.getElementById('boardView');
 
+  // ── Sidebar toggle ────────────────────────────────────
+  document.getElementById('toolSidebarToggle')?.addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('toolSidebar')?.classList.toggle('open');
+  });
+  // Close sidebar when clicking elsewhere on board
+  bv.addEventListener('mousedown', e => {
+    if (!e.target.closest('#toolSidebar')) {
+      document.getElementById('toolSidebar')?.classList.remove('open');
+    }
+  }, { capture: true });
+
   // ── Add sticky note ───────────────────────────────────
   document.getElementById('toolbarAddNote')?.addEventListener('click', () => {
+    document.getElementById('toolSidebar')?.classList.remove('open');
     const r   = bv.getBoundingClientRect();
     const pos = screenToCanvas(r.left + bv.offsetWidth / 2, r.top + bv.offsetHeight / 2);
-    const note = {
-      id:    genId(),
-      text:  '',
-      x:     pos.x - 100,
-      y:     pos.y - 70,
-      color: NOTE_COLORS[0],
-    };
+    const note = { id: genId(), text: '', x: pos.x - 100, y: pos.y - 70, color: NOTE_COLORS[0] };
     stickyNotes.push(note);
     saveStickyNotes();
     renderStickyNotes();
@@ -1019,7 +1221,53 @@ function initToolbar() {
 
   // ── Connect mode toggle ───────────────────────────────
   document.getElementById('toolbarConnectMode')?.addEventListener('click', () => {
+    document.getElementById('toolSidebar')?.classList.remove('open');
     if (connectMode) exitConnectMode(); else enterConnectMode();
+  });
+
+  // ── Add table ─────────────────────────────────────────
+  document.getElementById('toolbarAddTable')?.addEventListener('click', () => {
+    document.getElementById('toolSidebar')?.classList.remove('open');
+    const r   = bv.getBoundingClientRect();
+    const pos = screenToCanvas(r.left + bv.offsetWidth / 2, r.top + bv.offsetHeight / 2);
+    const rows = 3, cols = 3;
+    const tbl = {
+      id:     genId(),
+      x:      pos.x - 170,
+      y:      pos.y - 60,
+      rows, cols,
+      data:   Array.from({ length: rows }, () => Array(cols).fill('')),
+      folded: false,
+    };
+    canvasTables.push(tbl);
+    saveCanvasTables();
+    renderCanvasTables();
+  });
+
+  // ── Add image (file picker) ───────────────────────────
+  document.getElementById('toolbarAddImage')?.addEventListener('click', () => {
+    document.getElementById('toolSidebar')?.classList.remove('open');
+    document.getElementById('imageFileInput')?.click();
+  });
+  document.getElementById('imageFileInput')?.addEventListener('change', async e => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser || !currentBoardId) return;
+    e.target.value = ''; // reset so same file can be re-selected
+    try {
+      const path = `users/${currentUser.uid}/boards/${currentBoardId}/${genId()}_${file.name}`;
+      const imgRef = storageRef(storage, path);
+      await uploadBytes(imgRef, file);
+      const url = await getDownloadURL(imgRef);
+      const r   = bv.getBoundingClientRect();
+      const pos = screenToCanvas(r.left + bv.offsetWidth / 2, r.top + bv.offsetHeight / 2);
+      const img = { id: genId(), x: pos.x - 120, y: pos.y - 80, url, w: 240, h: 0 };
+      canvasImages.push(img);
+      saveCanvasImages();
+      renderCanvasImages();
+    } catch (err) {
+      console.error('Image upload failed:', err);
+      alert('Image upload failed. Make sure Firebase Storage rules allow writes for signed-in users.');
+    }
   });
 
   // Clicking the background deselects the active connection line
@@ -1037,78 +1285,178 @@ function initToolbar() {
 // ──────────────────────────────────────────────────────────
 
 // Shared drag logic for floating items (tasks and subjects)
+// ── Find the closest column within `threshold` screen pixels ─
+function findNearestColumn(clientX, clientY, threshold) {
+  let nearest = null, minDist = threshold;
+  document.querySelectorAll('.board-column').forEach(col => {
+    const r = col.getBoundingClientRect();
+    const dx = Math.max(r.left - clientX, 0, clientX - r.right);
+    const dy = Math.max(r.top  - clientY, 0, clientY - r.bottom);
+    const d  = Math.sqrt(dx * dx + dy * dy);
+    if (d < minDist) { minDist = d; nearest = col; }
+  });
+  return nearest;
+}
+
+// ── Attach a floating item back to a column ───────────────
+function attachFloatToColumn(colId, dataObj, kind) {
+  if (kind === 'task') {
+    const subj = subjects.find(s => s.id === dataObj.subject);
+    if (subj) subj.day = colId;
+    dataObj.floated = false; dataObj.floatX = null; dataObj.floatY = null;
+    saveTasks(); saveSubjects();
+  } else {
+    dataObj.day = colId;
+    dataObj.floated = false; dataObj.floatX = null; dataObj.floatY = null;
+    saveSubjects();
+  }
+}
+
+// ── Shared drag engine for any floating canvas item ───────
+// Call with the current mouse position to start a drag immediately
+// (works both from mousedown on handle AND from drag-out of column)
+function startActiveDrag(el, dataObj, kind, initMX, initMY) {
+  const startX = dataObj.floatX || 0;
+  const startY = dataObj.floatY || 0;
+  el.classList.add('floating-dragging');
+
+  function onMove(ev) {
+    dataObj.floatX = startX + (ev.clientX - initMX) / canvasZoom;
+    dataObj.floatY = startY + (ev.clientY - initMY) / canvasZoom;
+    el.style.left = dataObj.floatX + 'px';
+    el.style.top  = dataObj.floatY + 'px';
+    // Highlight nearest column (direct hit or within 70px proximity)
+    el.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    el.style.pointerEvents = '';
+    const directCol  = under?.closest('.board-column');
+    const nearestCol = directCol || findNearestColumn(ev.clientX, ev.clientY, 70);
+    document.querySelectorAll('.board-column').forEach(col =>
+      col.classList.toggle('drop-target-highlight', col === nearestCol));
+    renderConnections();
+  }
+
+  function onUp(ev) {
+    el.classList.remove('floating-dragging');
+    document.querySelectorAll('.board-column').forEach(col =>
+      col.classList.remove('drop-target-highlight'));
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup',   onUp);
+
+    // Direct hit test
+    el.style.pointerEvents = 'none';
+    const dropColEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.board-column');
+    el.style.pointerEvents = '';
+
+    // Proximity snap fallback: if not directly on a column, check within 70px
+    const targetCol = dropColEl || findNearestColumn(ev.clientX, ev.clientY, 70);
+    if (targetCol) {
+      attachFloatToColumn(targetCol.dataset.col, dataObj, kind);
+      renderBoard();
+    } else {
+      if (kind === 'task') saveTasks(); else saveSubjects();
+      renderConnections();
+    }
+  }
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup',   onUp);
+}
+
+// ── Wire drag handle on a floating element ────────────────
 function initFloatDrag(el, dataObj, kind) {
   const handle = el.querySelector('.floating-drag-handle');
   if (!handle) return;
-
   handle.addEventListener('mousedown', e => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
+    startActiveDrag(el, dataObj, kind, e.clientX, e.clientY);
+  });
+}
 
+// ── Drag a card OUT of its column by grabbing blank area ──
+function addCardDragOut(cardEl, colEl) {
+  cardEl.addEventListener('mousedown', e => {
+    // Only blank card area — skip interactive elements
+    if (e.target.closest('input, button, label, .card-due, .card-notes')) return;
+    if (connectMode) return;
     const startMX = e.clientX, startMY = e.clientY;
-    const startX  = dataObj.floatX || 0;
-    const startY  = dataObj.floatY || 0;
-
-    el.classList.add('floating-dragging');
 
     function onMove(ev) {
-      dataObj.floatX = startX + (ev.clientX - startMX) / canvasZoom;
-      dataObj.floatY = startY + (ev.clientY - startMY) / canvasZoom;
-      el.style.left = dataObj.floatX + 'px';
-      el.style.top  = dataObj.floatY + 'px';
-      // Highlight the column under cursor
-      el.style.pointerEvents = 'none';
-      const underEl = document.elementFromPoint(ev.clientX, ev.clientY);
-      el.style.pointerEvents = '';
-      const hoveredCol = underEl?.closest('.board-column');
-      document.querySelectorAll('.board-column').forEach(col =>
-        col.classList.toggle('drop-target-highlight', col === hoveredCol));
-      renderConnections();
-    }
-
-    function onUp(ev) {
-      el.classList.remove('floating-dragging');
-      document.querySelectorAll('.board-column').forEach(col =>
-        col.classList.remove('drop-target-highlight'));
-
-      // Detect drop target — temporarily hide element so it doesn't block the hit test
-      el.style.pointerEvents = 'none';
-      const dropColEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.board-column');
-      el.style.pointerEvents = '';
-
-      if (dropColEl) {
-        const targetColId = dropColEl.dataset.col;
-        if (kind === 'task') {
-          // Move the task's subject to the target column
-          const subj = subjects.find(s => s.id === dataObj.subject);
-          if (subj) subj.day = targetColId;
-          dataObj.floated = false;
-          dataObj.floatX  = null;
-          dataObj.floatY  = null;
-          saveTasks();
-          saveSubjects();
-        } else {
-          // Move the subject itself to the target column
-          dataObj.day    = targetColId;
-          dataObj.floated = false;
-          dataObj.floatX  = null;
-          dataObj.floatY  = null;
-          saveSubjects();
-        }
-        renderBoard();
-      } else {
-        // Stay floating at new position
-        if (kind === 'task') saveTasks();
-        else saveSubjects();
-        renderConnections();
-      }
+      const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
+      if (dist < 14) return;
+      const colRect = colEl?.getBoundingClientRect();
+      // Must move outside column bounds to trigger float-out
+      const outside = !colRect || ev.clientX < colRect.left - 10 || ev.clientX > colRect.right + 10;
+      if (!outside) return;
 
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup',   onUp);
-    }
+      window.removeEventListener('mouseup', onUp);
 
+      const taskId = cardEl.dataset.taskId;
+      const task   = tasks.find(t => t.id === taskId);
+      if (!task || task.floated) return;
+
+      const pos    = screenToCanvas(ev.clientX, ev.clientY);
+      task.floated = true;
+      task.floatX  = pos.x - 140;
+      task.floatY  = pos.y - 22;
+      saveTasks();
+      renderBoard();
+
+      // Continue drag on the new floating element
+      requestAnimationFrame(() => {
+        const floatEl = document.querySelector(`.floating-task[data-task-id="${taskId}"]`);
+        if (floatEl) startActiveDrag(floatEl, task, 'task', ev.clientX, ev.clientY);
+      });
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup',   onUp);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// ── Drag a subject OUT of its column by grabbing header ───
+function addSubjectDragOut(headerEl, colEl) {
+  headerEl.addEventListener('mousedown', e => {
+    if (e.target.closest('button')) return;
+    if (connectMode) return;
+    const startMX = e.clientX, startMY = e.clientY;
+
+    function onMove(ev) {
+      const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
+      if (dist < 14) return;
+      const colRect = colEl?.getBoundingClientRect();
+      const outside = !colRect || ev.clientX < colRect.left - 10 || ev.clientX > colRect.right + 10;
+      if (!outside) return;
+
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+
+      const subjId = headerEl.closest('.subject-group')?.dataset.subj;
+      const subj   = subjects.find(s => s.id === subjId);
+      if (!subj || subj.floated) return;
+
+      const pos     = screenToCanvas(ev.clientX, ev.clientY);
+      subj.floated  = true;
+      subj.floatX   = pos.x - 155;
+      subj.floatY   = pos.y - 22;
+      saveSubjects();
+      renderBoard();
+
+      requestAnimationFrame(() => {
+        const floatEl = document.querySelector(`.floating-subject[data-subj-id="${subjId}"]`);
+        if (floatEl) startActiveDrag(floatEl, subj, 'subject', ev.clientX, ev.clientY);
+      });
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   });
 }
 
@@ -1283,39 +1631,38 @@ function renderColumnTasks(colId) {
     btn.addEventListener('click', () => showInlineAdd(btn.dataset.subj))
   );
 
-  // ── Float subject handle — drag class card out of column ──
+  // ── Float subject handle (arrow button) ──────────────────
   container.querySelectorAll('.subject-float-handle').forEach(btn => {
     btn.addEventListener('mousedown', e => {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       const subj = subjects.find(s => s.id === btn.dataset.subjId);
       if (!subj) return;
       const r = btn.getBoundingClientRect();
       const pos = screenToCanvas(r.left, r.top);
-      subj.floated = true;
-      subj.floatX  = pos.x;
-      subj.floatY  = pos.y;
-      saveSubjects();
-      renderBoard();
+      subj.floated = true; subj.floatX = pos.x; subj.floatY = pos.y;
+      saveSubjects(); renderBoard();
     });
   });
 
-  // ── Float task handle — drag task card out of column ──────
+  // ── Float task handle (arrow button) ─────────────────────
   container.querySelectorAll('.card-float-handle').forEach(btn => {
     btn.addEventListener('mousedown', e => {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       const task = tasks.find(t => t.id === btn.dataset.taskId);
       if (!task) return;
       const r = btn.getBoundingClientRect();
       const pos = screenToCanvas(r.left, r.top);
-      task.floated = true;
-      task.floatX  = pos.x;
-      task.floatY  = pos.y;
-      saveTasks();
-      renderBoard();
+      task.floated = true; task.floatX = pos.x; task.floatY = pos.y;
+      saveTasks(); renderBoard();
     });
   });
+
+  // ── Drag cards OUT by grabbing blank area of card ────────
+  const colEl = container.closest('.board-column');
+  container.querySelectorAll('.kanban-card').forEach(cardEl => addCardDragOut(cardEl, colEl));
+
+  // ── Drag subjects OUT by grabbing blank area of header ───
+  container.querySelectorAll('.subject-group-header').forEach(h => addSubjectDragOut(h, colEl));
 }
 
 function showInlineAdd(subjId) {
@@ -3371,14 +3718,17 @@ async function openBoard(boardId) {
     subjects    = d.subjects    ? mergeSubjects(d.subjects) : DEFAULT_SUBJECTS.map(s => ({ ...s }));
     tasks       = d.tasks       || [];
     events      = d.events      || [];
-    stickyNotes = d.stickyNotes || [];
-    connections = d.connections || [];
+    stickyNotes  = d.stickyNotes  || [];
+    connections  = d.connections  || [];
+    canvasTables = d.canvasTables || [];
+    canvasImages  = d.canvasImages  || [];
   } else {
     // New board — start with defaults
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
     tasks = []; events = []; stickyNotes = []; connections = [];
-    await setDoc(boardDocRef(boardId), { columns, subjects, tasks, events, stickyNotes, connections });
+    canvasTables = []; canvasImages = [];
+    await setDoc(boardDocRef(boardId), { columns, subjects, tasks, events, stickyNotes, connections, canvasTables, canvasImages });
   }
 
   currentBoardId = boardId;
@@ -3425,6 +3775,7 @@ function leaveBoard() {
   columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
   subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
   tasks = []; events = []; stickyNotes = []; connections = [];
+  canvasTables = []; canvasImages = [];
   connectMode = false; connectSource = null; selectedConnectionId = null;
 
   // Hide board UI elements
@@ -3636,10 +3987,12 @@ onAuthStateChanged(auth, async user => {
     // Reset state so next user starts fresh
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
-    tasks       = [];
-    events      = [];
-    stickyNotes = [];
-    connections = [];
+    tasks        = [];
+    events       = [];
+    stickyNotes  = [];
+    connections  = [];
+    canvasTables = [];
+    canvasImages  = [];
     connectMode = false;
     connectSource = null;
   }
