@@ -1404,14 +1404,14 @@ function addCardDragOut(cardEl, colEl) {
     if (e.target.closest('input, button, label, .card-due, .card-notes')) return;
     if (connectMode) return;
     const startMX = e.clientX, startMY = e.clientY;
+    let triggered = false;
 
     function onMove(ev) {
+      if (triggered) return;
+      // Float out after dragging ~50px in any direction
       const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 8) return;
-      const colRect = colEl?.getBoundingClientRect();
-      // Float out once cursor leaves the column (no extra margin needed)
-      const outside = !colRect || ev.clientX < colRect.left || ev.clientX > colRect.right;
-      if (!outside) return;
+      if (dist < 50) return;
+      triggered = true;
 
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -1448,13 +1448,14 @@ function addSubjectDragOut(headerEl, colEl) {
     if (e.target.closest('button')) return;
     if (connectMode) return;
     const startMX = e.clientX, startMY = e.clientY;
+    let triggered = false;
 
     function onMove(ev) {
+      if (triggered) return;
+      // Float out after dragging ~50px in any direction
       const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 8) return;
-      const colRect = colEl?.getBoundingClientRect();
-      const outside = !colRect || ev.clientX < colRect.left || ev.clientX > colRect.right;
-      if (!outside) return;
+      if (dist < 50) return;
+      triggered = true;
 
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
