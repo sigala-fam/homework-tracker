@@ -597,9 +597,6 @@ function renderBoard() {
            style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)};left:${col.x}px;top:${col.y}px;z-index:${zIdx}">
         <div class="column-header">
           <div class="column-title-row">
-            <div class="col-drag-handle" title="Drag to move">
-              <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/><circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/><circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/></svg>
-            </div>
             <span class="day-pill day-pill-btn" data-id="${col.id}" style="background:${col.color}" title="Click to change color">${escHtml(initial)}</span>
             <h2 class="column-title">${escHtml(col.label)}</h2>
             <div class="column-header-actions">
@@ -659,12 +656,13 @@ function renderBoard() {
       bringColToFront(colId);
     }, { capture: true });
 
-    const handle = colEl.querySelector('.col-drag-handle');
-    if (!handle) return;
-
-    handle.addEventListener('mousedown', e => {
+    // Drag column by clicking blank space in the header (not buttons / day-pill)
+    const colHeader = colEl.querySelector('.column-header');
+    colHeader.addEventListener('mousedown', e => {
+      if (connectMode) return;
+      if (e.target.closest('.day-pill-btn, .column-header-actions, button')) return;
       e.preventDefault();
-      e.stopPropagation(); // prevent canvas pan from firing
+      e.stopPropagation();
 
       const col = columns.find(c => c.id === colId);
       if (!col) return;
@@ -1407,10 +1405,10 @@ function addCardDragOut(cardEl, colEl) {
 
     function onMove(ev) {
       const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 14) return;
+      if (dist < 8) return;
       const colRect = colEl?.getBoundingClientRect();
-      // Must move outside column bounds to trigger float-out
-      const outside = !colRect || ev.clientX < colRect.left - 10 || ev.clientX > colRect.right + 10;
+      // Float out once cursor leaves the column (no extra margin needed)
+      const outside = !colRect || ev.clientX < colRect.left || ev.clientX > colRect.right;
       if (!outside) return;
 
       window.removeEventListener('mousemove', onMove);
@@ -1451,9 +1449,9 @@ function addSubjectDragOut(headerEl, colEl) {
 
     function onMove(ev) {
       const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 14) return;
+      if (dist < 8) return;
       const colRect = colEl?.getBoundingClientRect();
-      const outside = !colRect || ev.clientX < colRect.left - 10 || ev.clientX > colRect.right + 10;
+      const outside = !colRect || ev.clientX < colRect.left || ev.clientX > colRect.right;
       if (!outside) return;
 
       window.removeEventListener('mousemove', onMove);
@@ -1612,7 +1610,6 @@ function renderColumnTasks(colId) {
       <div class="subject-group" style="--subject-color:${subj.color}" data-subj="${subj.id}">
         <div class="subject-color-bar"></div>
         <div class="subject-group-header">
-          <button class="subject-float-handle" data-subj-id="${subj.id}" title="Float on canvas">${ARROW_SVG}</button>
           <span class="subject-group-label">${escHtml(subj.label)}</span>
           <span class="subject-group-count">${subTasks.filter(t=>!t.done).length} left</span>
         </div>
@@ -1648,32 +1645,6 @@ function renderColumnTasks(colId) {
   container.querySelectorAll('.inline-add-trigger').forEach(btn =>
     btn.addEventListener('click', () => showInlineAdd(btn.dataset.subj))
   );
-
-  // ── Float subject handle (arrow button) ──────────────────
-  container.querySelectorAll('.subject-float-handle').forEach(btn => {
-    btn.addEventListener('mousedown', e => {
-      e.preventDefault(); e.stopPropagation();
-      const subj = subjects.find(s => s.id === btn.dataset.subjId);
-      if (!subj) return;
-      const r = btn.getBoundingClientRect();
-      const pos = screenToCanvas(r.left, r.top);
-      subj.floated = true; subj.floatX = pos.x; subj.floatY = pos.y;
-      saveSubjects(); renderBoard();
-    });
-  });
-
-  // ── Float task handle (arrow button) ─────────────────────
-  container.querySelectorAll('.card-float-handle').forEach(btn => {
-    btn.addEventListener('mousedown', e => {
-      e.preventDefault(); e.stopPropagation();
-      const task = tasks.find(t => t.id === btn.dataset.taskId);
-      if (!task) return;
-      const r = btn.getBoundingClientRect();
-      const pos = screenToCanvas(r.left, r.top);
-      task.floated = true; task.floatX = pos.x; task.floatY = pos.y;
-      saveTasks(); renderBoard();
-    });
-  });
 
   // ── Drag cards OUT by grabbing blank area of card ────────
   const colEl = container.closest('.board-column');
@@ -1882,7 +1853,6 @@ function renderCard(t, subj) {
           </div>
           ${t.notes ? `<div class="card-notes">${escHtml(t.notes)}</div>` : ''}
         </div>
-        <button class="card-float-handle" data-task-id="${t.id}" title="Float on canvas">${ARROW_SVG}</button>
         <button class="card-subtask-btn ${hasSubs?'has-subs':''}" data-id="${t.id}" title="Checklist">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="5.75" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="9.5" width="4" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="2" width="5" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="5.75" width="5" height="1.5" rx="0.75" fill="currentColor"/><rect x="7" y="9.5" width="5" height="1.5" rx="0.75" fill="currentColor"/></svg>
           ${countBadge}

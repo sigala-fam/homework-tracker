@@ -465,7 +465,9 @@ body {
   flex-shrink: 0;
   background: linear-gradient(to bottom, rgba(255,255,255,0.32), transparent);
   border-radius: var(--radius) var(--radius) 0 0;
+  cursor: grab;
 }
+.column-header:active { cursor: grabbing; }
 .column-title-row { display: flex; align-items: center; gap: 9px; margin-bottom: 3px; }
 .day-pill {
   width: 28px; height: 28px; border-radius: 8px;
@@ -504,20 +506,7 @@ body {
 .column-add-class-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
 /* Column header actions (rename / delete) */
-.col-drag-handle {
-  color: var(--muted);
-  opacity: 0;
-  cursor: grab;
-  padding: 3px 4px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  transition: opacity 0.15s, background 0.15s;
-}
-.board-column:hover .col-drag-handle { opacity: 1; }
-.col-drag-handle:hover { background: var(--surface-3); color: var(--text); }
-.col-drag-handle:active { cursor: grabbing; }
+/* col-drag-handle removed — column drags from any blank header area */
 
 .board-column.col-dragging {
   opacity: 0.75;
@@ -661,7 +650,9 @@ body {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 13px 9px;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
 }
+.subject-group-header:active { cursor: grabbing; }
 .subject-group-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: var(--subject-color, var(--text)); flex: 1; }
 .subject-group-count {
   font-size: 10px; color: var(--subject-color, #6366F1); font-weight: 800;
@@ -2444,40 +2435,8 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 /* ══════════════════════════════════════════════════════════
    DRAG-OUT HANDLES on task cards and subject headers
 ══════════════════════════════════════════════════════════ */
-.card-float-handle {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: grab;
-  padding: 2px 4px;
-  border-radius: 5px;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.12s, color 0.12s;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.kanban-card:hover .card-float-handle { opacity: 1; }
-.card-float-handle:hover { background: var(--surface-3); color: var(--accent); }
-.card-float-handle:active { cursor: grabbing; }
-
-.subject-float-handle {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: grab;
-  padding: 2px 4px;
-  border-radius: 5px;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.12s, color 0.12s;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.subject-group:hover .subject-float-handle { opacity: 1; }
-.subject-float-handle:hover { background: var(--surface-3); color: var(--accent); }
+/* card-float-handle and subject-float-handle removed — drag-out is now
+   a natural gesture: slide the card/class sideways out of the column */
 
 /* ══════════════════════════════════════════════════════════
    MULTI-BOARD HOME SCREEN
