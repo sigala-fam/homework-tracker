@@ -68,11 +68,19 @@
       <!-- kept for JS compatibility, not visible -->
       <span class="logo" style="display:none">📚</span>
       <h1 style="display:none">Homework Tracker</h1>
+      <!-- Back-to-boards button + current board name -->
+      <button class="leave-board-btn hidden" id="leaveBoardBtn" title="Back to all boards">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M8 2L4 6l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Boards
+      </button>
+      <span class="current-board-name hidden" id="currentBoardName"></span>
     </div>
 
     <div class="header-divider"></div>
 
-    <nav class="view-nav">
+    <nav class="view-nav hidden" id="viewNav">
       <button class="view-tab active" id="btnBoard">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="4" height="12" rx="1.5" fill="currentColor"/><rect x="7" y="1" width="4" height="8" rx="1.5" fill="currentColor"/></svg>
         Board
@@ -138,10 +146,26 @@
   </header>
 
   <!-- ── Status line ── -->
-  <div id="statusLine" class="status-line"></div>
+  <div id="statusLine" class="status-line hidden"></div>
+
+  <!-- ── Home Screen (board selector) ── -->
+  <div id="homeView" class="home-view hidden">
+    <div class="home-content">
+      <h2 class="home-title">My Boards</h2>
+      <div class="home-boards-grid" id="homeBoardsGrid">
+        <!-- Board cards rendered by JS -->
+      </div>
+      <button class="btn-new-board" id="btnNewBoard">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        New Board
+      </button>
+    </div>
+  </div>
 
   <!-- ── Board View ── -->
-  <div id="boardView" class="board-view">
+  <div id="boardView" class="board-view hidden">
     <div class="board-canvas" id="boardCanvas">
       <div class="board-columns" id="boardColumns"></div>
     </div>

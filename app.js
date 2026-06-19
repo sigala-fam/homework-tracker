@@ -6,7 +6,7 @@ import { getAuth, onAuthStateChanged, signOut, updateProfile,
          signInWithEmailAndPassword,
          createUserWithEmailAndPassword,
          sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc }                    from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
@@ -81,6 +81,11 @@ let connectSource                 = null;  // {id, type}
 let selectedConnectionId          = null;
 let connectModeListenersInitialized = false;
 
+// ── Multi-board state ─────────────────────────────────────
+let currentBoardId = null;         // ID of the board currently open
+let boardsMeta     = [];           // [{id, name, emoji, createdAt}] — lives in users/{uid}
+let appSetupDone   = false;        // guard: one-time canvas/toolbar init per session
+
 let calView     = 'monthly';
 let calDate     = new Date();
 let selectedDay = null;
@@ -92,13 +97,20 @@ const expandedSubtasks = new Set(); // task IDs with checklist panel open
 const collapsedLegendSections = new Set(); // section IDs the user has folded in the legend
 
 // ── Persist (Firestore) ───────────────────────────────────
-function userDocRef() { return doc(db, 'users', currentUser.uid); }
-function saveTasks()    { if (currentUser) setDoc(userDocRef(), { tasks },    { merge: true }); }
-function saveSubjects() { if (currentUser) setDoc(userDocRef(), { subjects }, { merge: true }); }
-function saveEvents()   { if (currentUser) setDoc(userDocRef(), { events },   { merge: true }); }
-function saveColumns()      { if (currentUser) setDoc(userDocRef(), { columns },      { merge: true }); }
-function saveStickyNotes()  { if (currentUser) setDoc(userDocRef(), { stickyNotes }, { merge: true }); }
-function saveConnections()  { if (currentUser) setDoc(userDocRef(), { connections }, { merge: true }); }
+function userDocRef()  { return doc(db, 'users', currentUser.uid); }
+// Each board lives in its own sub-doc: users/{uid}/boards/{boardId}
+function boardDocRef(id) { return doc(db, 'users', currentUser.uid, 'boards', id || currentBoardId); }
+
+// Board-level saves (only when a board is open)
+function saveTasks()    { if (currentUser && currentBoardId) setDoc(boardDocRef(), { tasks },    { merge: true }); }
+function saveSubjects() { if (currentUser && currentBoardId) setDoc(boardDocRef(), { subjects }, { merge: true }); }
+function saveEvents()   { if (currentUser && currentBoardId) setDoc(boardDocRef(), { events },   { merge: true }); }
+function saveColumns()      { if (currentUser && currentBoardId) setDoc(boardDocRef(), { columns },      { merge: true }); }
+function saveStickyNotes()  { if (currentUser && currentBoardId) setDoc(boardDocRef(), { stickyNotes }, { merge: true }); }
+function saveConnections()  { if (currentUser && currentBoardId) setDoc(boardDocRef(), { connections }, { merge: true }); }
+
+// User-level saves (always at users/{uid})
+async function saveBoardsMeta() { if (currentUser) await setDoc(userDocRef(), { boardsMeta }, { merge: true }); }
 function getSettings()  { return JSON.parse(localStorage.getItem('hw-settings') || 'null') || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } }; }
 function saveSettings(s){ localStorage.setItem('hw-settings', JSON.stringify(s)); if (currentUser) setDoc(userDocRef(), { settings: s }, { merge: true }); }
 
@@ -416,14 +428,17 @@ function applyCanvasTransform() {
 }
 
 function saveCanvasState() {
-  if (!currentUser) return;
-  localStorage.setItem(`hw-canvas-${currentUser.uid}`,
+  if (!currentUser || !currentBoardId) return;
+  localStorage.setItem(`hw-canvas-${currentUser.uid}-${currentBoardId}`,
     JSON.stringify({ zoom: canvasZoom, panX: canvasPanX, panY: canvasPanY }));
 }
 
 function loadCanvasState() {
-  if (!currentUser) return;
-  const s = JSON.parse(localStorage.getItem(`hw-canvas-${currentUser.uid}`) || 'null');
+  if (!currentUser || !currentBoardId) return;
+  // Try board-specific key first, fall back to old per-user key (migration)
+  const key = `hw-canvas-${currentUser.uid}-${currentBoardId}`;
+  const fallback = `hw-canvas-${currentUser.uid}`;
+  const s = JSON.parse(localStorage.getItem(key) || localStorage.getItem(fallback) || 'null');
   if (s) {
     canvasZoom = typeof s.zoom  === 'number' ? s.zoom  : 1;
     canvasPanX = typeof s.panX  === 'number' ? s.panX  : 40;
@@ -3287,56 +3302,226 @@ function mergeSubjects(raw) {
 async function loadUserData() {
   const ref  = doc(db, 'users', currentUser.uid);
   const snap = await getDoc(ref);
+  const d = snap.exists() ? snap.data() : {};
 
-  if (snap.exists()) {
-    const d = snap.data();
-    if (d.columns)     columns     = d.columns;
-    if (d.subjects)    subjects    = mergeSubjects(d.subjects);
-    if (d.tasks)       tasks       = d.tasks;
-    if (d.events)      events      = d.events;
-    if (d.stickyNotes) stickyNotes = d.stickyNotes;
-    if (d.connections) connections = d.connections;
-    if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
+  // Load settings (user-level)
+  if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
+
+  if (d.boardsMeta && d.boardsMeta.length > 0) {
+    // Multi-board user — just load the board list; board data loaded on openBoard()
+    boardsMeta = d.boardsMeta;
   } else {
-    // First sign-in — migrate any existing localStorage data, then save to cloud
+    // ── First time with multi-board system: migrate existing data → "My Board" ──
+    const boardId = genId();
+
+    // Gather existing data (either from old Firestore fields or localStorage)
     const lsTasks    = JSON.parse(localStorage.getItem('hw-tasks')    || '[]');
     const lsSubjects = JSON.parse(localStorage.getItem('hw-subjects') || 'null');
     const lsColumns  = JSON.parse(localStorage.getItem('hw-columns')  || 'null');
     const lsEvents   = JSON.parse(localStorage.getItem('hw-events')   || '[]');
     const lsSettings = JSON.parse(localStorage.getItem('hw-settings') || 'null');
-    if (lsTasks.length || lsSubjects || lsColumns) {
-      tasks   = lsTasks;
-      if (lsSubjects) subjects = mergeSubjects(lsSubjects);
-      if (lsColumns)  columns  = lsColumns;
-      events  = lsEvents;
-    }
-    await setDoc(ref, {
-      tasks, subjects, columns, events,
-      settings: lsSettings || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } },
+
+    const migratedColumns  = d.columns  || (lsColumns  ? lsColumns  : DEFAULT_COLUMNS.map(c => ({ ...c })));
+    const migratedSubjects = d.subjects ? mergeSubjects(d.subjects)
+                           : lsSubjects ? mergeSubjects(lsSubjects)
+                           : DEFAULT_SUBJECTS.map(s => ({ ...s }));
+    const migratedTasks       = d.tasks       || lsTasks    || [];
+    const migratedEvents      = d.events      || lsEvents   || [];
+    const migratedStickyNotes = d.stickyNotes || [];
+    const migratedConnections = d.connections || [];
+
+    // Save board data to sub-collection
+    await setDoc(doc(db, 'users', currentUser.uid, 'boards', boardId), {
+      columns:     migratedColumns,
+      subjects:    migratedSubjects,
+      tasks:       migratedTasks,
+      events:      migratedEvents,
+      stickyNotes: migratedStickyNotes,
+      connections: migratedConnections,
     });
+
+    // Save boards meta + settings to user doc
+    boardsMeta = [{ id: boardId, name: 'My Board', emoji: '📚', createdAt: Date.now() }];
+    await setDoc(ref, {
+      boardsMeta,
+      settings: d.settings || lsSettings || { ...DEFAULT_SETTINGS, dailyHours: { ...DEFAULT_SETTINGS.dailyHours } },
+    }, { merge: true });
   }
 }
 
+// ── One-time app setup (called once per login session) ────
 function initApp() {
+  if (appSetupDone) return;
+  appSetupDone = true;
   applyStyle();
   applyTheme(theme);
-  saveSubjects();
-  saveColumns();
-  populateSubjectDropdown();
-  populateColumnDropdowns();
-  const s = getSettings();
-  document.getElementById('devBadge').classList.toggle('hidden', !s.devMode);
-  document.getElementById('btnStats').classList.toggle('hidden',  !s.devMode);
   renderProfileInfo();
-  loadCanvasState();
-  renderBoard();
   initCanvasInteractions();
   initToolbar();
   initConnectMode();
 }
 
+// ── Open a board ──────────────────────────────────────────
+async function openBoard(boardId) {
+  // Load board data from sub-collection
+  const snap = await getDoc(boardDocRef(boardId));
+  if (snap.exists()) {
+    const d = snap.data();
+    columns     = d.columns     || DEFAULT_COLUMNS.map(c => ({ ...c }));
+    subjects    = d.subjects    ? mergeSubjects(d.subjects) : DEFAULT_SUBJECTS.map(s => ({ ...s }));
+    tasks       = d.tasks       || [];
+    events      = d.events      || [];
+    stickyNotes = d.stickyNotes || [];
+    connections = d.connections || [];
+  } else {
+    // New board — start with defaults
+    columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
+    subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
+    tasks = []; events = []; stickyNotes = []; connections = [];
+    await setDoc(boardDocRef(boardId), { columns, subjects, tasks, events, stickyNotes, connections });
+  }
+
+  currentBoardId = boardId;
+  localStorage.setItem(`hw-lastBoard-${currentUser.uid}`, boardId);
+
+  // Update board name in header
+  const meta = boardsMeta.find(b => b.id === boardId);
+  const nameEl = document.getElementById('currentBoardName');
+  if (nameEl && meta) nameEl.textContent = `${meta.emoji} ${meta.name}`;
+
+  // Switch views: hide home, show board UI
+  document.getElementById('homeView').classList.add('hidden');
+  document.getElementById('boardView').classList.remove('hidden');
+  document.getElementById('leaveBoardBtn').classList.remove('hidden');
+  document.getElementById('viewNav').classList.remove('hidden');
+  document.getElementById('statusLine').classList.remove('hidden');
+  document.getElementById('currentBoardName').classList.remove('hidden');
+
+  // Activate Board tab (in case we're returning to board from cal/plan)
+  activeView = 'board';
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('btnBoard')?.classList.add('active');
+  document.getElementById('calendarView').classList.add('hidden');
+  document.getElementById('planView').classList.add('hidden');
+
+  // Per-board rendering
+  const s = getSettings();
+  document.getElementById('devBadge').classList.toggle('hidden', !s.devMode);
+  document.getElementById('btnStats')?.classList.toggle('hidden', !s.devMode);
+  populateSubjectDropdown();
+  populateColumnDropdowns();
+  loadCanvasState();
+  renderBoard();
+}
+
+// ── Leave board → go back to home screen ─────────────────
+function leaveBoard() {
+  // Exit connect mode cleanly
+  if (connectMode) exitConnectMode();
+
+  currentBoardId = null;
+
+  // Reset board-level state
+  columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
+  subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
+  tasks = []; events = []; stickyNotes = []; connections = [];
+  connectMode = false; connectSource = null; selectedConnectionId = null;
+
+  // Hide board UI elements
+  document.getElementById('boardView').classList.add('hidden');
+  document.getElementById('calendarView').classList.add('hidden');
+  document.getElementById('planView').classList.add('hidden');
+  document.getElementById('leaveBoardBtn').classList.add('hidden');
+  document.getElementById('viewNav').classList.add('hidden');
+  document.getElementById('statusLine').classList.add('hidden');
+  document.getElementById('currentBoardName').classList.add('hidden');
+
+  showHomeScreen();
+}
+
+// ── Home screen ───────────────────────────────────────────
+function showHomeScreen() {
+  document.getElementById('homeView').classList.remove('hidden');
+  renderHomeScreen();
+}
+
+function renderHomeScreen() {
+  const grid = document.getElementById('homeBoardsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  boardsMeta.forEach(board => {
+    const card = document.createElement('div');
+    card.className = 'home-board-card';
+    card.dataset.boardId = board.id;
+    card.innerHTML = `
+      <div class="home-board-actions">
+        <button class="home-board-action-btn home-board-rename" title="Rename" data-board-id="${board.id}">✏️</button>
+        <button class="home-board-action-btn home-board-delete" title="Delete board" data-board-id="${board.id}">🗑️</button>
+      </div>
+      <div class="home-board-emoji">${escHtml(board.emoji || '📋')}</div>
+      <div class="home-board-name">${escHtml(board.name)}</div>
+    `;
+
+    // Open on click (not on action buttons)
+    card.addEventListener('click', e => {
+      if (e.target.closest('.home-board-action-btn')) return;
+      openBoard(board.id);
+    });
+
+    // Rename
+    card.querySelector('.home-board-rename').addEventListener('click', e => {
+      e.stopPropagation();
+      const newName = prompt('Rename board:', board.name);
+      if (newName && newName.trim()) {
+        board.name = newName.trim();
+        saveBoardsMeta();
+        renderHomeScreen();
+      }
+    });
+
+    // Delete
+    card.querySelector('.home-board-delete').addEventListener('click', async e => {
+      e.stopPropagation();
+      if (boardsMeta.length === 1) {
+        alert("You can't delete your only board. Create a new one first!");
+        return;
+      }
+      if (!confirm(`Delete "${board.name}"? All tasks and notes on this board will be gone forever.`)) return;
+      boardsMeta = boardsMeta.filter(b => b.id !== board.id);
+      try { await deleteDoc(boardDocRef(board.id)); } catch(_) {}
+      await saveBoardsMeta();
+      renderHomeScreen();
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+async function createNewBoard() {
+  const boardId = genId();
+  const meta = { id: boardId, name: 'New Board', emoji: '📋', createdAt: Date.now() };
+  boardsMeta.push(meta);
+  await saveBoardsMeta();
+  await openBoard(boardId);
+  // Prompt to rename right away
+  const newName = prompt('Name your new board:', 'New Board');
+  if (newName && newName.trim()) {
+    meta.name = newName.trim();
+    await saveBoardsMeta();
+    const nameEl = document.getElementById('currentBoardName');
+    if (nameEl) nameEl.textContent = `${meta.emoji} ${meta.name}`;
+  }
+}
+
 // ── Sign-out button ───────────────────────────────────────
 document.getElementById('signOutBtn').addEventListener('click', () => signOut(auth));
+
+// ── Leave Board button ────────────────────────────────────
+document.getElementById('leaveBoardBtn')?.addEventListener('click', () => leaveBoard());
+
+// ── New Board button (on home screen) ────────────────────
+document.getElementById('btnNewBoard')?.addEventListener('click', () => createNewBoard());
 
 // ── Login screen logic ────────────────────────────────────
 const loginOverlay  = document.getElementById('loginOverlay');
@@ -3426,15 +3611,29 @@ document.getElementById('loginModeToggle').addEventListener('click', e => {
 onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
-    await loadUserData();
+    await loadUserData();               // loads boardsMeta (migrates if needed)
     loginOverlay.classList.add('hidden');
     mainApp.classList.remove('hidden');
-    initApp();
+    initApp();                          // one-time canvas/toolbar setup (guarded)
+
+    // Auto-open last board, or the sole board, otherwise show home screen
+    const lastBoardId = localStorage.getItem(`hw-lastBoard-${user.uid}`);
+    const hasLast = lastBoardId && boardsMeta.find(b => b.id === lastBoardId);
+    if (hasLast) {
+      await openBoard(lastBoardId);
+    } else if (boardsMeta.length === 1) {
+      await openBoard(boardsMeta[0].id);
+    } else {
+      showHomeScreen();
+    }
   } else {
     currentUser = null;
+    currentBoardId = null;
+    boardsMeta = [];
+    appSetupDone = false;
     mainApp.classList.add('hidden');
     loginOverlay.classList.remove('hidden');
-    // reset state so next user starts fresh
+    // Reset state so next user starts fresh
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
     tasks       = [];
