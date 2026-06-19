@@ -2389,24 +2389,34 @@ function detectBgBrightness(bg) {
 }
 
 function applyBg(bg) {
-  if (!bg) {
-    document.body.style.background = '';
-    document.body.style.backgroundSize = '';
-    document.body.style.backgroundPosition = '';
-    document.body.style.backgroundAttachment = '';
-    document.body.removeAttribute('data-bg');
-    return;
+  const boardView = document.getElementById('boardView');
+
+  // Always clear both targets first
+  document.body.style.background = '';
+  document.body.style.backgroundSize = '';
+  document.body.style.backgroundPosition = '';
+  document.body.style.backgroundAttachment = '';
+  if (boardView) {
+    boardView.style.background = '';
+    boardView.style.backgroundSize = '';
+    boardView.style.backgroundPosition = '';
   }
+  document.body.removeAttribute('data-bg');
+
+  if (!bg) return;
+
   if (bg.startsWith('url(')) {
-    document.body.style.background = bg;
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundPosition = 'center';
-    document.body.style.backgroundAttachment = 'fixed';
+    // Photo/image → apply only to the board canvas area, not the header.
+    // This keeps the header clean and ensures the image fills the visible
+    // workspace at full quality regardless of canvas zoom level.
+    if (boardView) {
+      boardView.style.background = bg;
+      boardView.style.backgroundSize = 'cover';
+      boardView.style.backgroundPosition = 'center';
+    }
   } else {
+    // Solid colour or gradient → apply to the full page (looks best)
     document.body.style.background = bg;
-    document.body.style.backgroundSize = '';
-    document.body.style.backgroundPosition = '';
-    document.body.style.backgroundAttachment = '';
   }
   document.body.setAttribute('data-bg', detectBgBrightness(bg));
 }
