@@ -452,6 +452,30 @@ body {
 .column-add-class-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
 /* Column header actions (rename / delete) */
+.col-drag-handle {
+  color: var(--muted);
+  opacity: 0;
+  cursor: grab;
+  padding: 3px 4px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.board-column:hover .col-drag-handle { opacity: 1; }
+.col-drag-handle:hover { background: var(--surface-3); color: var(--text); }
+.col-drag-handle:active { cursor: grabbing; }
+
+.board-column.col-dragging {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.board-column.col-drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
 .column-header-actions { display: flex; gap: 3px; margin-left: auto; }
 .column-header-btn {
   background: none; border: none; cursor: pointer;

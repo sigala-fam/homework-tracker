@@ -56,6 +56,7 @@ let events   = [];
 let theme    = localStorage.getItem('hw-theme') || 'light';
 
 let activeView  = 'board';
+let dragSrcColId = null;
 let planSubView = 'ranked';   // 'ranked' | 'schedule' | 'stats'
 let calView     = 'monthly';
 let calDate     = new Date();
@@ -385,6 +386,9 @@ function renderBoard() {
       <div class="board-column" data-col="${col.id}" style="--col-accent:${col.color};--col-tint:${col.tint === 'none' ? 'transparent' : (col.tint || col.color)}">
         <div class="column-header">
           <div class="column-title-row">
+            <div class="col-drag-handle" title="Drag to reorder">
+              <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/><circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/><circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/></svg>
+            </div>
             <span class="day-pill day-pill-btn" data-id="${col.id}" style="background:${col.color}" title="Click to change color">${escHtml(initial)}</span>
             <h2 class="column-title">${escHtml(col.label)}</h2>
             <div class="column-header-actions">
@@ -427,6 +431,55 @@ function renderBoard() {
     btn.addEventListener('click', () => deleteColumn(btn.dataset.id))
   );
   document.getElementById('addColumnBtn').addEventListener('click', showAddColumnForm);
+
+  // ── Column drag-to-reorder ──────────────────────────────
+  container.querySelectorAll('.board-column').forEach(colEl => {
+    const colId = colEl.dataset.col;
+
+    // Only allow drag when the grip handle is grabbed
+    colEl.addEventListener('mousedown', e => {
+      colEl.setAttribute('draggable', e.target.closest('.col-drag-handle') ? 'true' : 'false');
+    });
+
+    colEl.addEventListener('dragstart', e => {
+      dragSrcColId = colId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', colId);
+      // Small delay so the ghost renders before we fade the original
+      requestAnimationFrame(() => colEl.classList.add('col-dragging'));
+    });
+
+    colEl.addEventListener('dragend', () => {
+      dragSrcColId = null;
+      colEl.classList.remove('col-dragging');
+      container.querySelectorAll('.board-column').forEach(c => c.classList.remove('col-drag-over'));
+    });
+
+    colEl.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragSrcColId && dragSrcColId !== colId) colEl.classList.add('col-drag-over');
+    });
+
+    colEl.addEventListener('dragleave', e => {
+      if (!colEl.contains(e.relatedTarget)) colEl.classList.remove('col-drag-over');
+    });
+
+    colEl.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrcColId || dragSrcColId === colId) return;
+      colEl.classList.remove('col-drag-over');
+      const srcIdx = columns.findIndex(c => c.id === dragSrcColId);
+      const tgtIdx = columns.findIndex(c => c.id === colId);
+      if (srcIdx !== -1 && tgtIdx !== -1) {
+        const [moved] = columns.splice(srcIdx, 1);
+        columns.splice(tgtIdx, 0, moved);
+        saveColumns();
+        renderBoard();
+      }
+    });
+  });
+
   renderStatusLine();
 }
 
