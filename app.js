@@ -429,14 +429,25 @@ function zoomAtPoint(newZoom, px, py) {
 function initCanvasInteractions() {
   const boardView = document.getElementById('boardView');
 
-  // ── Wheel to zoom ─────────────────────────────────────
+  // ── Wheel: pinch → zoom, scroll → pan (like Milanote) ──
   boardView.addEventListener('wheel', e => {
     e.preventDefault();
-    const rect  = boardView.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const delta  = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-    zoomAtPoint(canvasZoom + delta, mouseX, mouseY);
+    if (e.ctrlKey) {
+      // Pinch-to-zoom (trackpad) or Ctrl+scroll (mouse)
+      // deltaY is negative when pinching out (zoom in)
+      const rect   = boardView.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      // Use a smaller sensitivity for pinch (deltaY is in pixels, not lines)
+      const delta  = -e.deltaY * 0.005;
+      zoomAtPoint(canvasZoom + delta, mouseX, mouseY);
+    } else {
+      // Regular scroll → pan the canvas
+      canvasPanX -= e.deltaX;
+      canvasPanY -= e.deltaY;
+      applyCanvasTransform();
+      saveCanvasState();
+    }
   }, { passive: false });
 
   // ── Drag on empty space to pan ────────────────────────
