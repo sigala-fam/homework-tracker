@@ -3993,11 +3993,28 @@ document.getElementById('loginModeToggle').addEventListener('click', e => {
   clearLoginError();
 });
 
+// Reject if a promise takes too long, so the UI never hangs forever.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
 // ── Auth state watcher (runs the whole app) ───────────────
 onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
-    await loadUserData();               // loads boardsMeta (migrates if needed)
+    try {
+      await withTimeout(loadUserData(), 20000);  // loads boardsMeta (migrates if needed)
+    } catch (err) {
+      // Signed in, but couldn't load data (no connection, blocked, etc.).
+      // Without this, the screen would just freeze and look like nothing happened.
+      console.error('Failed to load user data after sign-in:', err);
+      showLoginError("Signed in, but couldn't load your data. Check your internet connection and try again.");
+      await signOut(auth);
+      return;
+    }
     loginOverlay.classList.add('hidden');
     mainApp.classList.remove('hidden');
     initApp();                          // one-time canvas/toolbar setup (guarded)
