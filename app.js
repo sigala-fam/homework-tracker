@@ -2199,6 +2199,9 @@ function buildDailySchedule() {
 
   // Only schedule up to 75% of available time — leaves breathing room.
   const BUFFER = 0.75;
+  // When a task is too big for one day, split it into pieces — but never
+  // leave a piece smaller than this (avoids tiny 5-minute slivers).
+  const MIN_CHUNK = 30;
 
   const now      = new Date();
   const today    = new Date(now); today.setHours(0,0,0,0);
@@ -2245,16 +2248,31 @@ function buildDailySchedule() {
   const taskDayMap = {};
   const assigned   = new Set();
 
+  // Place part of a task on a given day. For tasks that fit in one day,
+  // partCount is 1 (no "Part X of Y" label). For split tasks, each piece
+  // carries its own chunk minutes plus which part it is.
+  function placeChunk(ds, t, mins, partIndex, partCount) {
+    if (!taskDayMap[ds]) taskDayMap[ds] = [];
+    taskDayMap[ds].push({
+      ...t,
+      minsNeeded:    mins,   // this piece's minutes (keeps day totals correct)
+      estimatedMins: mins,   // so the schedule shows this piece's time
+      fullMins:      t.minsNeeded,
+      partIndex,
+      partCount,
+    });
+    if (dayInfo[ds]) dayInfo[ds].scheduledMins += mins;
+  }
+
   for (const t of scored) {
     if (assigned.has(t.id)) continue;
 
     const todayAvailMins = dayInfo[todayStr]?.availMins ?? 0;
 
-    // Due today AND time still remains → force to today (skip buffer)
+    // Due today AND time still remains → force to today (skip buffer).
+    // Due-today work always happens today, even if it's a big task.
     if (t.due === todayStr && todayAvailMins > 0) {
-      if (!taskDayMap[todayStr]) taskDayMap[todayStr] = [];
-      taskDayMap[todayStr].push(t);
-      dayInfo[todayStr].scheduledMins += t.minsNeeded;
+      placeChunk(todayStr, t, t.minsNeeded, 1, 1);
       assigned.add(t.id);
       continue;
     }
@@ -2280,22 +2298,41 @@ function buildDailySchedule() {
     // Days with enough buffer capacity for this whole task
     const fittingDays = candidates.filter(c => c.remaining >= t.minsNeeded);
 
-    let chosenDay;
     if (fittingDays.length > 0) {
-      // Load-balance: pick the day with the most remaining capacity.
-      // This naturally spreads tasks across free days.
-      chosenDay = fittingDays.reduce((best, c) => c.remaining > best.remaining ? c : best).ds;
+      // Fits in one day → keep it as a single block (load-balanced onto the
+      // day with the most room, which naturally spreads tasks across free days).
+      const chosenDay = fittingDays.reduce((best, c) => c.remaining > best.remaining ? c : best).ds;
+      placeChunk(chosenDay, t, t.minsNeeded, 1, 1);
     } else {
-      // Nothing fits within the soft cap — pick whichever day has the most space
-      const withAny = candidates.filter(c => c.remaining > 0);
-      chosenDay = withAny.length > 0
-        ? withAny.reduce((best, c) => c.remaining > best.remaining ? c : best).ds
-        : (todayAvailMins > 0 ? todayStr : fmtDate(new Date(today.getTime() + 86400000)));
-    }
+      // Too big for any single day → SPLIT it across days, earliest first,
+      // so the work is finished before the due date.
+      const usable = candidates.filter(c => c.remaining >= MIN_CHUNK);
 
-    if (!taskDayMap[chosenDay]) taskDayMap[chosenDay] = [];
-    taskDayMap[chosenDay].push(t);
-    if (dayInfo[chosenDay]) dayInfo[chosenDay].scheduledMins += t.minsNeeded;
+      if (usable.length === 0) {
+        // No real capacity anywhere — fall back to dumping it whole on the
+        // emptiest day rather than silently losing the task.
+        const withAny = candidates.filter(c => c.remaining > 0);
+        const chosenDay = withAny.length > 0
+          ? withAny.reduce((best, c) => c.remaining > best.remaining ? c : best).ds
+          : (todayAvailMins > 0 ? todayStr : fmtDate(new Date(today.getTime() + 86400000)));
+        placeChunk(chosenDay, t, t.minsNeeded, 1, 1);
+      } else {
+        // Figure out the pieces first (in date order) so we know how many
+        // parts there are before labelling them "Part X of Y".
+        let left = t.minsNeeded;
+        const pieces = [];
+        for (const c of usable) {
+          if (left <= 0) break;
+          const take = Math.min(c.remaining, left);
+          pieces.push({ ds: c.ds, mins: take });
+          left -= take;
+        }
+        // If we ran out of room, pile the leftover onto the last piece's day.
+        if (left > 0 && pieces.length) pieces[pieces.length - 1].mins += left;
+
+        pieces.forEach((p, i) => placeChunk(p.ds, t, p.mins, i + 1, pieces.length));
+      }
+    }
     assigned.add(t.id);
   }
 
@@ -2380,12 +2417,21 @@ function renderDailySchedule() {
 
     const taskHtml = dayTasks.map(t => {
       const subj = sMap[t.subject] || { label:'?', color:'#aaa' };
+      const isPart   = t.partCount > 1;
+      const partHtml = isPart
+        ? `<span class="schedule-task-part">Part ${t.partIndex} of ${t.partCount}</span>`
+        : '';
+      // For a split task, also show the whole-task size as a hint.
+      const fullHint = isPart && t.fullMins
+        ? `<span class="schedule-task-full">${fmtMins(t.fullMins)} total</span>`
+        : '';
       return `
-        <div class="schedule-task" style="--subject-color:${subj.color}">
-          <div class="schedule-task-name">${escHtml(t.name)}</div>
+        <div class="schedule-task ${isPart ? 'is-multiday' : ''}" style="--subject-color:${subj.color}">
+          <div class="schedule-task-name">${escHtml(t.name)}${partHtml}</div>
           <div class="schedule-task-meta">
             <span class="schedule-task-subject" style="background:${subj.color}">${escHtml(subj.label)}</span>
             ${t.estimatedMins ? `<span class="schedule-task-time">⏱ ${fmtMins(t.estimatedMins)}</span>` : ''}
+            ${fullHint}
           </div>
         </div>`;
     }).join('');
