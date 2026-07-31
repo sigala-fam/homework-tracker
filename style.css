@@ -1779,8 +1779,98 @@ body {
 }
 
 .login-logo { font-size: 48px; line-height: 1; }
-.login-title { font-size: 24px; font-weight: 900; color: var(--text); letter-spacing: -0.5px; }
+.login-title {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 26px; font-weight: 700; color: var(--text); letter-spacing: -0.3px;
+}
 .login-subtitle { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 280px; }
+
+/* ── Welcome screen (the elegant first page) ── */
+.welcome-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+  padding: 52px 40px;
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 18px;
+  text-align: center;
+  animation: welcome-in 0.5s ease both;
+}
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Welcome card gently drifts up and fades out on "Get Started" */
+.welcome-card.leaving {
+  animation: welcome-out 0.32s ease forwards;
+}
+@keyframes welcome-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-14px) scale(0.98); }
+}
+/* Sign-in card fades in after the welcome card leaves */
+.login-card.entering {
+  animation: welcome-in 0.42s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-card, .welcome-card.leaving, .login-card.entering { animation: none; }
+}
+
+/* ── Reusable view entrances (login, boards, home) ── */
+@keyframes view-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes view-rise-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+.app-entering   { animation: view-fade-in 0.5s ease both; }
+.board-entering { animation: view-rise-in 0.4s ease both; }
+.home-entering  { animation: view-rise-in 0.38s ease both; }
+
+/* Quick, light fade for switching Board / Calendar / Plan tabs */
+@keyframes view-switch-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.view-switching { animation: view-switch-in 0.28s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-entering, .board-entering, .home-entering, .view-switching { animation: none; }
+}
+.welcome-logo-icon {
+  width: 76px; height: 76px; border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #A855F7, #EC4899);
+  box-shadow: 0 8px 22px rgba(168, 85, 247, 0.35);
+}
+.welcome-title {
+  font-family: 'Merriweather', Georgia, serif;
+  font-size: 40px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1;
+  margin: 2px 0;
+}
+.welcome-tagline {
+  font-size: 15px; color: var(--muted); line-height: 1.7; max-width: 300px;
+  margin-bottom: 4px;
+}
+.btn-get-started {
+  width: 100%; padding: 14px 16px;
+  background: linear-gradient(135deg, #A855F7, #EC4899);
+  color: #fff; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700; font-family: inherit;
+  cursor: pointer; letter-spacing: 0.2px;
+  box-shadow: 0 6px 18px rgba(168, 85, 247, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn-get-started:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(168, 85, 247, 0.4);
+  filter: brightness(1.05);
+}
+.btn-get-started:active { transform: translateY(0); }
 
 .btn-google {
   display: flex; align-items: center; justify-content: center; gap: 10px;

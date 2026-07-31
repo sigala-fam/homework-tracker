@@ -398,6 +398,7 @@ function showView(v) {
     document.getElementById(name + 'View').classList.toggle('hidden', v !== name);
     document.getElementById('btn' + name.charAt(0).toUpperCase() + name.slice(1)).classList.toggle('active', v === name);
   });
+  playEntrance(document.getElementById(v + 'View'), 'view-switching', 300);  // ease the new tab in
   if (v === 'board')    renderBoard();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     renderPlan();
@@ -3822,7 +3823,9 @@ async function openBoard(boardId) {
 
   // Switch views: hide home, show board UI
   document.getElementById('homeView').classList.add('hidden');
-  document.getElementById('boardView').classList.remove('hidden');
+  const boardViewEl = document.getElementById('boardView');
+  boardViewEl.classList.remove('hidden');
+  playEntrance(boardViewEl, 'board-entering', 400);   // board rises into view
   document.getElementById('leaveBoardBtn').classList.remove('hidden');
   document.getElementById('viewNav').classList.remove('hidden');
   document.getElementById('statusLine').classList.remove('hidden');
@@ -3873,7 +3876,9 @@ function leaveBoard() {
 
 // ── Home screen ───────────────────────────────────────────
 function showHomeScreen() {
-  document.getElementById('homeView').classList.remove('hidden');
+  const homeViewEl = document.getElementById('homeView');
+  homeViewEl.classList.remove('hidden');
+  playEntrance(homeViewEl, 'home-entering', 380);   // home screen eases back in
   renderHomeScreen();
 }
 
@@ -3960,7 +3965,31 @@ const loginOverlay  = document.getElementById('loginOverlay');
 const mainApp       = document.getElementById('mainApp');
 const loginError    = document.getElementById('loginError');
 const loginEmailSec = document.getElementById('loginEmailSection');
+const welcomeScreen = document.getElementById('welcomeScreen');
+const loginCard     = document.querySelector('.login-card');
 const googleProvider = new GoogleAuthProvider();
+
+// Play a one-shot entrance animation on an element, then clean the class up
+function playEntrance(el, animClass, duration) {
+  if (!el) return;
+  el.classList.remove(animClass);
+  // force reflow so the animation restarts even if the class was just removed
+  void el.offsetWidth;
+  el.classList.add(animClass);
+  setTimeout(() => el.classList.remove(animClass), duration);
+}
+
+// Welcome screen → smoothly fade into the sign-in card
+document.getElementById('btnGetStarted').addEventListener('click', () => {
+  welcomeScreen.classList.add('leaving');       // drift up + fade out
+  setTimeout(() => {
+    welcomeScreen.classList.add('hidden');
+    welcomeScreen.classList.remove('leaving');
+    loginCard.classList.remove('hidden');
+    loginCard.classList.add('entering');        // fade the sign-in card in
+    setTimeout(() => loginCard.classList.remove('entering'), 450);
+  }, 320);                                       // matches the 0.32s fade-out
+});
 
 function showLoginError(msg) {
   loginError.textContent = msg;
@@ -4063,6 +4092,7 @@ onAuthStateChanged(auth, async user => {
     }
     loginOverlay.classList.add('hidden');
     mainApp.classList.remove('hidden');
+    playEntrance(mainApp, 'app-entering', 500);   // gently fade the app in
     initApp();                          // one-time canvas/toolbar setup (guarded)
 
     // Auto-open last board, or the sole board, otherwise show home screen
@@ -4082,6 +4112,9 @@ onAuthStateChanged(auth, async user => {
     appSetupDone = false;
     mainApp.classList.add('hidden');
     loginOverlay.classList.remove('hidden');
+    // Show the welcome screen first again (hide the sign-in card)
+    welcomeScreen.classList.remove('hidden');
+    loginCard.classList.add('hidden');
     // Reset state so next user starts fresh
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
