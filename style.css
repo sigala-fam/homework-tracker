@@ -398,6 +398,22 @@ body {
 .board-view input,
 .board-view textarea {
   touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* Stop the long-press "picked it up" gesture from also triggering the phone's
+   text-selection / image callout on the board. */
+.board-view { -webkit-touch-callout: none; }
+/* An item that's been picked up by a long-press on touch — lifts a little. */
+.touch-lifted {
+  transform: scale(1.04);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.30) !important;
+  opacity: 0.97;
+  z-index: 9999 !important;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .touch-lifted { transition: none; }
 }
 /* The moveable canvas layer — transformed by JS */
 .board-canvas {
@@ -2033,6 +2049,26 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
    MOBILE  (≤ 640 px)
 ══════════════════════════════ */
 @media (max-width: 640px) {
+
+  /* On phones the header wraps to two rows, so its height isn't a fixed 52px.
+     Lay the app out as a full-height flex column instead of hard-coding
+     `100vh - 84px` — otherwise the page overflows and the status line (the
+     "Good morning" bar) scrolls up out of sight after you move around. */
+  #mainApp {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .status-line { flex: none; }
+  .home-view,
+  .board-view,
+  .calendar-view,
+  .plan-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+  }
 
   /* Header — two-row layout on mobile */
   .header {

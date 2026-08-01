@@ -312,7 +312,11 @@ function renderStatusLine() {
 
   const now  = new Date();
   const hour = now.getHours();
-  const greeting    = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  // Uses the device's own clock, so it follows whatever timezone the phone is set to.
+  const greeting    = hour < 6  ? "You're up early"   // 12am–5:59am — the wee hours
+                    : hour < 12 ? 'Good morning'
+                    : hour < 17 ? 'Good afternoon'
+                    : 'Good evening';
   const firstName   = currentUser?.displayName?.split(' ')[0] || '';
   const greetingText = firstName ? `${greeting}, ${firstName}` : greeting;
 
@@ -509,8 +513,56 @@ function zoomAtPoint(newZoom, px, py) {
   saveCanvasState();
 }
 
+// ── Drag-vs-pan intent on touch ───────────────────────────
+// On a phone one finger is used both to *pan the board* and to *move an item*.
+// We tell them apart by intent: a quick swipe pans (even if it starts on a
+// column/card), while pressing-and-holding an item for a moment "picks it up"
+// to move it. On a mouse there's no conflict, so dragging stays immediate.
+let touchItemDragging = false;          // true while an item is held & dragging by touch
+const TOUCH_HOLD_MS   = 320;            // press-and-hold time to pick an item up
+const TOUCH_MOVE_TOL  = 10;             // px of finger drift allowed before it counts as a swipe
+
+// Gate the start of an item drag. Mouse → begin immediately. Touch → begin only
+// after a long-press; if the finger moves first, we bail so the board can pan.
+function gateDrag(e, el, begin) {
+  if (e.pointerType !== 'touch') { begin(e.clientX, e.clientY); return; }
+  const sx = e.clientX, sy = e.clientY;
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    settled = true; cleanup();
+    touchItemDragging = true;
+    if (el) el.classList.add('touch-lifted');
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
+    begin(sx, sy);
+  }, TOUCH_HOLD_MS);
+  function onMove(ev) {
+    if (settled) return;
+    if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > TOUCH_MOVE_TOL) { settled = true; cleanup(); }
+  }
+  function onEnd() { if (!settled) { settled = true; cleanup(); } }
+  function cleanup() {
+    clearTimeout(timer);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onEnd);
+    window.removeEventListener('pointercancel', onEnd);
+  }
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onEnd);
+  window.addEventListener('pointercancel', onEnd);
+}
+
 function initCanvasInteractions() {
   const boardView = document.getElementById('boardView');
+
+  // When any drag finishes, clear the "held" state and the lifted look.
+  const clearTouchDrag = () => {
+    if (!touchItemDragging) return;
+    touchItemDragging = false;
+    document.querySelectorAll('.touch-lifted').forEach(el => el.classList.remove('touch-lifted'));
+  };
+  window.addEventListener('pointerup', clearTouchDrag);
+  window.addEventListener('pointercancel', clearTouchDrag);
 
   // ── Wheel: pinch → zoom, scroll → pan (like Milanote) ──
   boardView.addEventListener('wheel', e => {
@@ -569,15 +621,17 @@ function initCanvasInteractions() {
   // ── Touch: one finger pans, two fingers pinch-to-zoom (mobile) ──
   // Mirrors the mouse-drag pan above. A touch that starts on a card,
   // column, note, or control is left alone so taps and buttons still work.
-  const panBlocked = t =>
-    t.closest('.board-column')     || t.closest('.column-add-col')   ||
-    t.closest('.canvas-controls')  || t.closest('.tool-sidebar')     ||
-    t.closest('.sticky-note')      || t.closest('.floating-task')    ||
-    t.closest('.floating-subject') || t.closest('.canvas-table')     ||
-    t.closest('.canvas-image');
+  // Panning may start almost anywhere now (so a swipe traverses the board even
+  // if it lands on a column or card). We only refuse to pan when the finger is
+  // on a real control that needs the tap itself — buttons, inputs, checkboxes.
+  const onControl = t =>
+    t.closest('button, input, textarea, select, a, label, .card-checkbox, .sticky-note-color-swatch') ||
+    t.closest('.canvas-controls') || t.closest('.tool-sidebar');
 
   let touchMode = null;                 // 'pan' | 'pinch' | null
-  let tStartX = 0, tStartY = 0;         // pan reference
+  let tStartX = 0, tStartY = 0;         // pan reference (offset form)
+  let panFromX = 0, panFromY = 0;       // raw finger start, for the swipe threshold
+  let panActive = false;                // becomes true once the finger has moved enough to pan
   let pinchDist0 = 0, pinchZoom0 = 1, pinchCX = 0, pinchCY = 0;
   const twoFingerDist = (a, b) => Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
 
@@ -591,15 +645,22 @@ function initCanvasInteractions() {
     pinchCY     = (a.clientY + b.clientY) / 2 - rect.top;
   }
 
+  function armPan(touch) {
+    touchMode = 'pan';
+    panActive = false;
+    panFromX = touch.clientX; panFromY = touch.clientY;
+    tStartX = touch.clientX - canvasPanX;
+    tStartY = touch.clientY - canvasPanY;
+  }
+
   boardView.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
       beginPinch(e);
       e.preventDefault();
     } else if (e.touches.length === 1) {
-      if (panBlocked(e.target)) { touchMode = null; return; }   // let taps/cards work
-      touchMode = 'pan';
-      tStartX = e.touches[0].clientX - canvasPanX;
-      tStartY = e.touches[0].clientY - canvasPanY;
+      if (connectMode) { touchMode = null; return; }            // connect mode draws its own line
+      if (onControl(e.target)) { touchMode = null; return; }    // let taps / buttons work
+      armPan(e.touches[0]);
     }
   }, { passive: false });
 
@@ -609,24 +670,31 @@ function initCanvasInteractions() {
       zoomAtPoint(pinchZoom0 * (dist / pinchDist0), pinchCX, pinchCY);
       e.preventDefault();
     } else if (touchMode === 'pan' && e.touches.length === 1) {
-      canvasPanX = e.touches[0].clientX - tStartX;
-      canvasPanY = e.touches[0].clientY - tStartY;
+      if (touchItemDragging) return;    // an item is being long-pressed & moved — don't pan
+      const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
+      if (!panActive) {
+        // Wait until the finger clearly swipes; this leaves room for a
+        // press-and-hold on an item (which arms an item drag instead).
+        if (Math.hypot(cx - panFromX, cy - panFromY) < TOUCH_MOVE_TOL) return;
+        panActive = true;
+        tStartX = cx - canvasPanX;      // reset origin so the pan doesn't jump
+        tStartY = cy - canvasPanY;
+      }
+      canvasPanX = cx - tStartX;
+      canvasPanY = cy - tStartY;
       applyCanvasTransform();
       e.preventDefault();
     }
   }, { passive: false });
 
   boardView.addEventListener('touchend', e => {
-    if (touchMode === 'pan' || touchMode === 'pinch') saveCanvasState();
+    if (touchMode === 'pan' && panActive || touchMode === 'pinch') saveCanvasState();
     if (e.touches.length === 0) {
       touchMode = null;                 // all fingers up
     } else if (e.touches.length === 1) {
-      // A finger lifted after a pinch — hand off to a fresh pan so it
-      // doesn't jump, but only on empty canvas.
-      if (panBlocked(e.target)) { touchMode = null; return; }
-      touchMode = 'pan';
-      tStartX = e.touches[0].clientX - canvasPanX;
-      tStartY = e.touches[0].clientY - canvasPanY;
+      // A finger lifted after a pinch — hand off to a fresh pan so it doesn't jump.
+      if (connectMode || onControl(e.target)) { touchMode = null; return; }
+      armPan(e.touches[0]);
     }
   }, { passive: false });
 
@@ -729,46 +797,49 @@ function renderBoard() {
       if (connectMode) return;
       if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       if (e.target.closest('.day-pill-btn, .column-header-actions, button')) return;
-      e.preventDefault();
-      e.stopPropagation();
 
       const col = columns.find(c => c.id === colId);
       if (!col) return;
 
-      colEl.classList.add('col-dragging');
-      colEl.style.zIndex = 9999; // on top of everything while dragging
+      e.stopPropagation();
+      if (e.pointerType !== 'touch') e.preventDefault();
 
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
-      const startColX   = col.x;
-      const startColY   = col.y;
+      gateDrag(e, colEl, (sx, sy) => {          // touch: hold to pick up; mouse: immediate
+        colEl.classList.add('col-dragging');
+        colEl.style.zIndex = 9999; // on top of everything while dragging
 
-      function onMove(ev) {
-        const dx = (ev.clientX - startMouseX) / canvasZoom;
-        const dy = (ev.clientY - startMouseY) / canvasZoom;
-        col.x = startColX + dx;
-        col.y = startColY + dy;
-        colEl.style.left = col.x + 'px';
-        colEl.style.top  = col.y + 'px';
-      }
+        const startMouseX = sx;
+        const startMouseY = sy;
+        const startColX   = col.x;
+        const startColY   = col.y;
 
-      function onUp() {
-        colEl.classList.remove('col-dragging');
-        // Restore to its bring-to-front z-index (already the highest from click)
-        colEl.style.zIndex = colZOrder.get(colId) || 1;
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup',   onUp);
-        saveColumns();
-        // Nudge the "Add column" button to follow
-        const addBtn = document.getElementById('addColumnBtn');
-        if (addBtn) {
-          addBtn.style.left = (Math.max(...columns.map(c => c.x + 310)) + 24) + 'px';
-          addBtn.style.top  = Math.min(...columns.map(c => c.y)) + 'px';
+        function onMove(ev) {
+          const dx = (ev.clientX - startMouseX) / canvasZoom;
+          const dy = (ev.clientY - startMouseY) / canvasZoom;
+          col.x = startColX + dx;
+          col.y = startColY + dy;
+          colEl.style.left = col.x + 'px';
+          colEl.style.top  = col.y + 'px';
         }
-      }
 
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup',   onUp);
+        function onUp() {
+          colEl.classList.remove('col-dragging');
+          // Restore to its bring-to-front z-index (already the highest from click)
+          colEl.style.zIndex = colZOrder.get(colId) || 1;
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup',   onUp);
+          saveColumns();
+          // Nudge the "Add column" button to follow
+          const addBtn = document.getElementById('addColumnBtn');
+          if (addBtn) {
+            addBtn.style.left = (Math.max(...columns.map(c => c.x + 310)) + 24) + 'px';
+            addBtn.style.top  = Math.min(...columns.map(c => c.y)) + 'px';
+          }
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup',   onUp);
+      });
     });
   });
 
@@ -891,27 +962,29 @@ function renderStickyNotes() {
       if (connectMode) return;  // let boardView capture handle connect
       if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       if (e.target.closest('textarea, button, .sticky-note-color-swatch')) return;
-      e.preventDefault();
       e.stopPropagation();
-      const startMX = e.clientX, startMY = e.clientY;
-      const startNX = note.x,    startNY = note.y;
-      el.style.cursor = 'grabbing';
-      function onMove(ev) {
-        note.x = startNX + (ev.clientX - startMX) / canvasZoom;
-        note.y = startNY + (ev.clientY - startMY) / canvasZoom;
-        el.style.left = note.x + 'px';
-        el.style.top  = note.y + 'px';
-        renderConnections();
-      }
-      function onUp() {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup',   onUp);
-        el.style.cursor = '';
-        saveStickyNotes();
-        renderConnections();
-      }
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup',   onUp);
+      if (e.pointerType !== 'touch') e.preventDefault();
+      gateDrag(e, el, (sx, sy) => {             // touch: hold to pick up; mouse: immediate
+        const startMX = sx, startMY = sy;
+        const startNX = note.x, startNY = note.y;
+        el.style.cursor = 'grabbing';
+        function onMove(ev) {
+          note.x = startNX + (ev.clientX - startMX) / canvasZoom;
+          note.y = startNY + (ev.clientY - startMY) / canvasZoom;
+          el.style.left = note.x + 'px';
+          el.style.top  = note.y + 'px';
+          renderConnections();
+        }
+        function onUp() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup',   onUp);
+          el.style.cursor = '';
+          saveStickyNotes();
+          renderConnections();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup',   onUp);
+      });
     });
   });
 }
@@ -1020,22 +1093,25 @@ function renderCanvasTables() {
     const grip = header.querySelector('.canvas-table-drag');
     grip.addEventListener('pointerdown', e => {
       if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
-      e.preventDefault(); e.stopPropagation();
-      const startMX = e.clientX, startMY = e.clientY;
-      const startX  = tbl.x, startY = tbl.y;
-      function onMove(ev) {
-        tbl.x = startX + (ev.clientX - startMX) / canvasZoom;
-        tbl.y = startY + (ev.clientY - startMY) / canvasZoom;
-        el.style.left = tbl.x + 'px';
-        el.style.top  = tbl.y + 'px';
-      }
-      function onUp() {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup',   onUp);
-        saveCanvasTables();
-      }
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup',   onUp);
+      e.stopPropagation();
+      if (e.pointerType !== 'touch') e.preventDefault();
+      gateDrag(e, el, (sx, sy) => {             // touch: hold to pick up; mouse: immediate
+        const startMX = sx, startMY = sy;
+        const startX  = tbl.x, startY = tbl.y;
+        function onMove(ev) {
+          tbl.x = startX + (ev.clientX - startMX) / canvasZoom;
+          tbl.y = startY + (ev.clientY - startMY) / canvasZoom;
+          el.style.left = tbl.x + 'px';
+          el.style.top  = tbl.y + 'px';
+        }
+        function onUp() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup',   onUp);
+          saveCanvasTables();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup',   onUp);
+      });
     });
 
   });
@@ -1078,22 +1154,25 @@ function renderCanvasImages() {
     const grip = el.querySelector('.canvas-image-drag');
     grip.addEventListener('pointerdown', e => {
       if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
-      e.preventDefault(); e.stopPropagation();
-      const startMX = e.clientX, startMY = e.clientY;
-      const startX = img.x, startY = img.y;
-      function onMove(ev) {
-        img.x = startX + (ev.clientX - startMX) / canvasZoom;
-        img.y = startY + (ev.clientY - startMY) / canvasZoom;
-        el.style.left = img.x + 'px';
-        el.style.top  = img.y + 'px';
-      }
-      function onUp() {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup',   onUp);
-        saveCanvasImages();
-      }
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup',   onUp);
+      e.stopPropagation();
+      if (e.pointerType !== 'touch') e.preventDefault();
+      gateDrag(e, el, (sx, sy) => {             // touch: hold to pick up; mouse: immediate
+        const startMX = sx, startMY = sy;
+        const startX = img.x, startY = img.y;
+        function onMove(ev) {
+          img.x = startX + (ev.clientX - startMX) / canvasZoom;
+          img.y = startY + (ev.clientY - startMY) / canvasZoom;
+          el.style.left = img.x + 'px';
+          el.style.top  = img.y + 'px';
+        }
+        function onUp() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup',   onUp);
+          saveCanvasImages();
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup',   onUp);
+      });
     });
   });
 }
@@ -1200,9 +1279,10 @@ function initConnectMode() {
 
   const boardView = document.getElementById('boardView');
 
-  // ── Drag-to-connect: mousedown on any connectable element starts a line ──
-  boardView.addEventListener('mousedown', e => {
-    if (!connectMode || e.button !== 0) return;
+  // ── Drag-to-connect: pointerdown on any connectable element starts a line ──
+  // (pointer events → works with both mouse and touch)
+  boardView.addEventListener('pointerdown', e => {
+    if (!connectMode || (e.button && e.button !== 0)) return;
     const source = getConnectTarget(e.target);
     if (!source) return;
 
@@ -1245,8 +1325,8 @@ function initConnectMode() {
     }
 
     function onUp(ev) {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup',   onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup',   onUp);
       // Clean up visual state
       document.getElementById('connectionsSvg')?.querySelector('.preview-line')?.remove();
       document.querySelectorAll('.connect-source-highlight, .connect-drop-highlight')
@@ -1275,8 +1355,8 @@ function initConnectMode() {
       renderConnections();
     }
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup',   onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup',   onUp);
   }, { capture: true });
 
   // Escape cancels connect mode entirely
@@ -1462,101 +1542,112 @@ function initFloatDrag(el, dataObj, kind) {
   if (!handle) return;
   handle.addEventListener('pointerdown', e => {
     if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
-    e.preventDefault(); e.stopPropagation();
-    startActiveDrag(el, dataObj, kind, e.clientX, e.clientY);
+    e.stopPropagation();
+    if (e.pointerType !== 'touch') e.preventDefault();
+    gateDrag(e, el, (sx, sy) => startActiveDrag(el, dataObj, kind, sx, sy));
   });
 }
 
 // ── Drag a card OUT of its column by grabbing blank area ──
 function addCardDragOut(cardEl, colEl) {
-  // NOTE: no preventDefault here — a tap must still open the card. The 50px
-  // threshold below is what tells a real drag apart from a tap.
+  // NOTE: no preventDefault here — a tap must still open the card. On a mouse a
+  // 50px drag tells a real drag from a tap; on touch the press-and-hold already
+  // did, so any movement then floats the card out.
   cardEl.addEventListener('pointerdown', e => {
     if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
     // Only blank card area — skip interactive elements
     if (e.target.closest('input, button, label, .card-due, .card-notes')) return;
     if (connectMode) return;
-    const startMX = e.clientX, startMY = e.clientY;
-    let triggered = false;
+    const touch = e.pointerType === 'touch';
 
-    function onMove(ev) {
-      if (triggered) return;
-      // Float out after dragging ~50px in any direction
-      const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 50) return;
-      triggered = true;
+    gateDrag(e, cardEl, (sx, sy) => {         // touch: hold to pick up; mouse: immediate
+      const startMX = sx, startMY = sy;
+      const floatAfter = touch ? 0 : 50;      // hold already confirmed intent on touch
+      let triggered = false;
 
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      function onMove(ev) {
+        if (triggered) return;
+        const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
+        if (dist < floatAfter) return;
+        triggered = true;
 
-      const taskId = cardEl.dataset.taskId;
-      const task   = tasks.find(t => t.id === taskId);
-      if (!task || task.floated) return;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
 
-      const pos    = screenToCanvas(ev.clientX, ev.clientY);
-      task.floated = true;
-      task.floatX  = pos.x - 140;
-      task.floatY  = pos.y - 22;
-      saveTasks();
-      renderBoard();
+        const taskId = cardEl.dataset.taskId;
+        const task   = tasks.find(t => t.id === taskId);
+        if (!task || task.floated) return;
 
-      // Continue drag on the new floating element
-      requestAnimationFrame(() => {
-        const floatEl = document.querySelector(`.floating-task[data-task-id="${taskId}"]`);
-        if (floatEl) startActiveDrag(floatEl, task, 'task', ev.clientX, ev.clientY);
-      });
-    }
-    function onUp() {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    }
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+        const pos    = screenToCanvas(ev.clientX, ev.clientY);
+        task.floated = true;
+        task.floatX  = pos.x - 140;
+        task.floatY  = pos.y - 22;
+        saveTasks();
+        renderBoard();
+
+        // Continue drag on the new floating element
+        requestAnimationFrame(() => {
+          const floatEl = document.querySelector(`.floating-task[data-task-id="${taskId}"]`);
+          if (floatEl) startActiveDrag(floatEl, task, 'task', ev.clientX, ev.clientY);
+        });
+      }
+      function onUp() {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
   });
 }
 
 // ── Drag a subject OUT of its column by grabbing header ───
 function addSubjectDragOut(headerEl, colEl) {
-  // No preventDefault — a tap must still work; the 50px threshold marks a drag.
+  // No preventDefault — a tap must still work. Mouse uses a 50px threshold;
+  // touch uses press-and-hold, then any movement floats the subject out.
   headerEl.addEventListener('pointerdown', e => {
     if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
     if (e.target.closest('button')) return;
     if (connectMode) return;
-    const startMX = e.clientX, startMY = e.clientY;
-    let triggered = false;
+    const touch = e.pointerType === 'touch';
 
-    function onMove(ev) {
-      if (triggered) return;
-      // Float out after dragging ~50px in any direction
-      const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
-      if (dist < 50) return;
-      triggered = true;
+    gateDrag(e, headerEl.closest('.subject-group') || headerEl, (sx, sy) => {
+      const startMX = sx, startMY = sy;
+      const floatAfter = touch ? 0 : 50;
+      let triggered = false;
 
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      function onMove(ev) {
+        if (triggered) return;
+        const dist = Math.hypot(ev.clientX - startMX, ev.clientY - startMY);
+        if (dist < floatAfter) return;
+        triggered = true;
 
-      const subjId = headerEl.closest('.subject-group')?.dataset.subj;
-      const subj   = subjects.find(s => s.id === subjId);
-      if (!subj || subj.floated) return;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
 
-      const pos     = screenToCanvas(ev.clientX, ev.clientY);
-      subj.floated  = true;
-      subj.floatX   = pos.x - 155;
-      subj.floatY   = pos.y - 22;
-      saveSubjects();
-      renderBoard();
+        const subjId = headerEl.closest('.subject-group')?.dataset.subj;
+        const subj   = subjects.find(s => s.id === subjId);
+        if (!subj || subj.floated) return;
 
-      requestAnimationFrame(() => {
-        const floatEl = document.querySelector(`.floating-subject[data-subj-id="${subjId}"]`);
-        if (floatEl) startActiveDrag(floatEl, subj, 'subject', ev.clientX, ev.clientY);
-      });
-    }
-    function onUp() {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    }
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+        const pos     = screenToCanvas(ev.clientX, ev.clientY);
+        subj.floated  = true;
+        subj.floatX   = pos.x - 155;
+        subj.floatY   = pos.y - 22;
+        saveSubjects();
+        renderBoard();
+
+        requestAnimationFrame(() => {
+          const floatEl = document.querySelector(`.floating-subject[data-subj-id="${subjId}"]`);
+          if (floatEl) startActiveDrag(floatEl, subj, 'subject', ev.clientX, ev.clientY);
+        });
+      }
+      function onUp() {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
   });
 }
 
