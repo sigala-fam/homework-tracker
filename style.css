@@ -388,6 +388,16 @@ body {
   position: relative;
   padding: 0;
   cursor: default;
+  /* The board handles its own one-finger pan + two-finger pinch on touch
+     devices, so tell the browser not to hijack those gestures (no page
+     scroll / double-tap zoom while dragging the board). */
+  touch-action: none;
+}
+/* …but let text fields inside the board keep normal touch behaviour, so
+   tapping to place the caret / select text still works on phones. */
+.board-view input,
+.board-view textarea {
+  touch-action: auto;
 }
 /* The moveable canvas layer — transformed by JS */
 .board-canvas {

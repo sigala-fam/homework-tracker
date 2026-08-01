@@ -566,6 +566,70 @@ function initCanvasInteractions() {
     window.addEventListener('mouseup',   onUp);
   });
 
+  // ── Touch: one finger pans, two fingers pinch-to-zoom (mobile) ──
+  // Mirrors the mouse-drag pan above. A touch that starts on a card,
+  // column, note, or control is left alone so taps and buttons still work.
+  const panBlocked = t =>
+    t.closest('.board-column')     || t.closest('.column-add-col')   ||
+    t.closest('.canvas-controls')  || t.closest('.tool-sidebar')     ||
+    t.closest('.sticky-note')      || t.closest('.floating-task')    ||
+    t.closest('.floating-subject') || t.closest('.canvas-table')     ||
+    t.closest('.canvas-image');
+
+  let touchMode = null;                 // 'pan' | 'pinch' | null
+  let tStartX = 0, tStartY = 0;         // pan reference
+  let pinchDist0 = 0, pinchZoom0 = 1, pinchCX = 0, pinchCY = 0;
+  const twoFingerDist = (a, b) => Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+
+  function beginPinch(e) {
+    const [a, b] = e.touches;
+    const rect = boardView.getBoundingClientRect();
+    touchMode   = 'pinch';
+    pinchDist0  = twoFingerDist(a, b) || 1;
+    pinchZoom0  = canvasZoom;
+    pinchCX     = (a.clientX + b.clientX) / 2 - rect.left;
+    pinchCY     = (a.clientY + b.clientY) / 2 - rect.top;
+  }
+
+  boardView.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      beginPinch(e);
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      if (panBlocked(e.target)) { touchMode = null; return; }   // let taps/cards work
+      touchMode = 'pan';
+      tStartX = e.touches[0].clientX - canvasPanX;
+      tStartY = e.touches[0].clientY - canvasPanY;
+    }
+  }, { passive: false });
+
+  boardView.addEventListener('touchmove', e => {
+    if (touchMode === 'pinch' && e.touches.length === 2) {
+      const dist = twoFingerDist(e.touches[0], e.touches[1]);
+      zoomAtPoint(pinchZoom0 * (dist / pinchDist0), pinchCX, pinchCY);
+      e.preventDefault();
+    } else if (touchMode === 'pan' && e.touches.length === 1) {
+      canvasPanX = e.touches[0].clientX - tStartX;
+      canvasPanY = e.touches[0].clientY - tStartY;
+      applyCanvasTransform();
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  boardView.addEventListener('touchend', e => {
+    if (touchMode === 'pan' || touchMode === 'pinch') saveCanvasState();
+    if (e.touches.length === 0) {
+      touchMode = null;                 // all fingers up
+    } else if (e.touches.length === 1) {
+      // A finger lifted after a pinch — hand off to a fresh pan so it
+      // doesn't jump, but only on empty canvas.
+      if (panBlocked(e.target)) { touchMode = null; return; }
+      touchMode = 'pan';
+      tStartX = e.touches[0].clientX - canvasPanX;
+      tStartY = e.touches[0].clientY - canvasPanY;
+    }
+  }, { passive: false });
+
   // ── Zoom control buttons ──────────────────────────────
   document.getElementById('canvasZoomIn').addEventListener('click', () => {
     const v = document.getElementById('boardView').getBoundingClientRect();
@@ -654,15 +718,16 @@ function renderBoard() {
 
     // Clicking anywhere on a column brings it in front of any overlapping ones.
     // Uses capture phase so it fires before children stop propagation.
-    colEl.addEventListener('mousedown', e => {
+    colEl.addEventListener('pointerdown', e => {
       if (connectMode) return;  // handled by boardView capture in initConnectMode
       bringColToFront(colId);
     }, { capture: true });
 
     // Drag column by clicking blank space in the header (not buttons / day-pill)
     const colHeader = colEl.querySelector('.column-header');
-    colHeader.addEventListener('mousedown', e => {
+    colHeader.addEventListener('pointerdown', e => {
       if (connectMode) return;
+      if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       if (e.target.closest('.day-pill-btn, .column-header-actions, button')) return;
       e.preventDefault();
       e.stopPropagation();
@@ -691,8 +756,8 @@ function renderBoard() {
         colEl.classList.remove('col-dragging');
         // Restore to its bring-to-front z-index (already the highest from click)
         colEl.style.zIndex = colZOrder.get(colId) || 1;
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup',   onUp);
         saveColumns();
         // Nudge the "Add column" button to follow
         const addBtn = document.getElementById('addColumnBtn');
@@ -702,8 +767,8 @@ function renderBoard() {
         }
       }
 
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup',   onUp);
     });
   });
 
@@ -822,8 +887,9 @@ function renderStickyNotes() {
     });
 
     // ── Drag: click anywhere on the note except textarea / buttons / swatches
-    el.addEventListener('mousedown', e => {
+    el.addEventListener('pointerdown', e => {
       if (connectMode) return;  // let boardView capture handle connect
+      if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       if (e.target.closest('textarea, button, .sticky-note-color-swatch')) return;
       e.preventDefault();
       e.stopPropagation();
@@ -838,14 +904,14 @@ function renderStickyNotes() {
         renderConnections();
       }
       function onUp() {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup',   onUp);
         el.style.cursor = '';
         saveStickyNotes();
         renderConnections();
       }
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup',   onUp);
     });
   });
 }
@@ -952,7 +1018,8 @@ function renderCanvasTables() {
 
     // ── Drag via grip handle
     const grip = header.querySelector('.canvas-table-drag');
-    grip.addEventListener('mousedown', e => {
+    grip.addEventListener('pointerdown', e => {
+      if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       e.preventDefault(); e.stopPropagation();
       const startMX = e.clientX, startMY = e.clientY;
       const startX  = tbl.x, startY = tbl.y;
@@ -963,12 +1030,12 @@ function renderCanvasTables() {
         el.style.top  = tbl.y + 'px';
       }
       function onUp() {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup',   onUp);
         saveCanvasTables();
       }
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup',   onUp);
     });
 
   });
@@ -1009,7 +1076,8 @@ function renderCanvasImages() {
 
     // ── Drag via grip
     const grip = el.querySelector('.canvas-image-drag');
-    grip.addEventListener('mousedown', e => {
+    grip.addEventListener('pointerdown', e => {
+      if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
       e.preventDefault(); e.stopPropagation();
       const startMX = e.clientX, startMY = e.clientY;
       const startX = img.x, startY = img.y;
@@ -1020,12 +1088,12 @@ function renderCanvasImages() {
         el.style.top  = img.y + 'px';
       }
       function onUp() {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup',   onUp);
         saveCanvasImages();
       }
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup',   onUp);
     });
   });
 }
@@ -1365,8 +1433,8 @@ function startActiveDrag(el, dataObj, kind, initMX, initMY) {
     el.classList.remove('floating-dragging');
     document.querySelectorAll('.board-column').forEach(col =>
       col.classList.remove('drop-target-highlight'));
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup',   onUp);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup',   onUp);
 
     // Direct hit test
     el.style.pointerEvents = 'none';
@@ -1384,15 +1452,16 @@ function startActiveDrag(el, dataObj, kind, initMX, initMY) {
     }
   }
 
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup',   onUp);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup',   onUp);
 }
 
 // ── Wire drag handle on a floating element ────────────────
 function initFloatDrag(el, dataObj, kind) {
   const handle = el.querySelector('.floating-drag-handle');
   if (!handle) return;
-  handle.addEventListener('mousedown', e => {
+  handle.addEventListener('pointerdown', e => {
+    if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
     e.preventDefault(); e.stopPropagation();
     startActiveDrag(el, dataObj, kind, e.clientX, e.clientY);
   });
@@ -1400,7 +1469,10 @@ function initFloatDrag(el, dataObj, kind) {
 
 // ── Drag a card OUT of its column by grabbing blank area ──
 function addCardDragOut(cardEl, colEl) {
-  cardEl.addEventListener('mousedown', e => {
+  // NOTE: no preventDefault here — a tap must still open the card. The 50px
+  // threshold below is what tells a real drag apart from a tap.
+  cardEl.addEventListener('pointerdown', e => {
+    if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
     // Only blank card area — skip interactive elements
     if (e.target.closest('input, button, label, .card-due, .card-notes')) return;
     if (connectMode) return;
@@ -1414,8 +1486,8 @@ function addCardDragOut(cardEl, colEl) {
       if (dist < 50) return;
       triggered = true;
 
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
 
       const taskId = cardEl.dataset.taskId;
       const task   = tasks.find(t => t.id === taskId);
@@ -1435,17 +1507,19 @@ function addCardDragOut(cardEl, colEl) {
       });
     }
     function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   });
 }
 
 // ── Drag a subject OUT of its column by grabbing header ───
 function addSubjectDragOut(headerEl, colEl) {
-  headerEl.addEventListener('mousedown', e => {
+  // No preventDefault — a tap must still work; the 50px threshold marks a drag.
+  headerEl.addEventListener('pointerdown', e => {
+    if (e.button && e.button !== 0) return;   // ignore right/middle mouse buttons
     if (e.target.closest('button')) return;
     if (connectMode) return;
     const startMX = e.clientX, startMY = e.clientY;
@@ -1458,8 +1532,8 @@ function addSubjectDragOut(headerEl, colEl) {
       if (dist < 50) return;
       triggered = true;
 
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
 
       const subjId = headerEl.closest('.subject-group')?.dataset.subj;
       const subj   = subjects.find(s => s.id === subjId);
@@ -1478,11 +1552,11 @@ function addSubjectDragOut(headerEl, colEl) {
       });
     }
     function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   });
 }
 
