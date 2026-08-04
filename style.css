@@ -2713,28 +2713,42 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 ══════════════════════════════════════════════════════════ */
 .home-view {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 64px 32px 80px;
+  padding: 48px 32px 64px;
   min-height: calc(100vh - 52px);
   background: var(--bg);
   overflow-y: auto;
 }
+/* `margin: auto` is the safe way to centre a flex child both ways — with
+   `align-items: center` alone a tall list would get clipped off the top. */
 .home-content {
-  max-width: 760px;
+  max-width: 860px;
   width: 100%;
+  margin: auto;
+  text-align: center;
 }
 .home-title {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 800;
   color: var(--text);
-  margin-bottom: 32px;
-  letter-spacing: -0.5px;
+  margin-bottom: 7px;
+  letter-spacing: -0.6px;
 }
+.home-subtitle {
+  font-size: 14.5px;
+  color: var(--muted);
+  margin-bottom: 30px;
+  line-height: 1.4;
+}
+/* Flex (not grid) so a half-full last row stays centred instead of
+   left-aligning against empty phantom columns. */
 .home-boards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 28px;
 }
 
 /* Individual board card */
@@ -2752,6 +2766,10 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   position: relative;
   user-select: none;
   min-height: 120px;
+  /* Fixed-ish width (rather than 1fr) keeps a lone board card the same size
+     as a full row, and lets it shrink to fit two-up on a phone. */
+  flex: 0 1 168px;
+  max-width: 200px;
 }
 .home-board-card:hover {
   box-shadow: var(--shadow-card-hover);
@@ -2821,6 +2839,24 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   transform: translateY(-1px);
 }
 .btn-new-board:active { transform: none; }
+
+/* Home screen on phones — tighten up so two board cards still fit side by
+   side. Flexbox wraps to a new line *before* it shrinks an item, so the card
+   width has to come down here or you'd get one lonely card per row.
+   NOTE: this block has to live *after* the base rules above, not up in the
+   main 640px media query, or the later base rules would win. */
+@media (max-width: 640px) {
+  .home-view { padding: 32px 20px 48px; }
+  .home-title { font-size: 25px; }
+  .home-subtitle { font-size: 13.5px; margin-bottom: 24px; }
+  .home-boards-grid { gap: 14px; }
+  .home-board-card {
+    flex-basis: 150px;
+    min-height: 112px;
+    padding: 18px 12px 15px;
+  }
+  .home-board-emoji { font-size: 38px; }
+}
 
 /* ── Leave Board button + board name in header ────────── */
 .leave-board-btn {
