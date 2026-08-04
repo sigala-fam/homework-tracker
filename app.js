@@ -11,7 +11,7 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'http
 
 // ── Midnight, the pixel-cat on the sign-in screen ─────────
 import { mountMidnight, midnightOn, setMidnightOn, onMidnightChange,
-         midnightPrefs, midnightAdopt } from './midnight.js?v=midnight11';
+         midnightPrefs, midnightAdopt } from './midnight.js?v=midnight12';
 
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
@@ -38,6 +38,19 @@ const DEFAULT_SETTINGS = {
   workHours:  { mon: null, tue: null, wed: null, thu: null, fri: null, sat: null, sun: null },
   devMode: false,
 };
+
+/* Colours a board card can be tinted with (set via the ✏️ button).
+   Stored on the board's meta as a plain hex string, so an unknown or removed
+   colour just falls back to an untinted card rather than breaking. */
+const BOARD_COLORS = [
+  { id: 'none',   label: 'No colour', hex: ''        },
+  { id: 'purple', label: 'Purple',    hex: '#8B5CF6' },
+  { id: 'blue',   label: 'Blue',      hex: '#3B82F6' },
+  { id: 'teal',   label: 'Teal',      hex: '#14B8A6' },
+  { id: 'green',  label: 'Green',     hex: '#22C55E' },
+  { id: 'amber',  label: 'Amber',     hex: '#F59E0B' },
+  { id: 'rose',   label: 'Rose',      hex: '#F43F5E' },
+];
 
 const CLUBS = {
   theater:     { label: 'Theater',          color: '#8B5CF6' },
@@ -143,6 +156,20 @@ function daysUntil(str) {
   const today = new Date(); today.setHours(0,0,0,0);
   const due   = new Date(str + 'T00:00:00');
   return Math.ceil((due - today) / 86400000);
+}
+
+/* Shared by the status line inside a board and the greeting on the boards
+   screen, so the two can never drift out of step. Uses the device's own clock,
+   so it follows whatever timezone the phone is set to. The emoji roughly
+   tracks Midnight's own sunny/evening/night looks. */
+function greetingLine() {
+  const hour = new Date().getHours();
+  const g = hour < 6  ? { text: "You're up early", emoji: '🌙' }   // 12am–5:59am
+          : hour < 12 ? { text: 'Good morning',    emoji: '🌅' }
+          : hour < 17 ? { text: 'Good afternoon',  emoji: '☀️' }
+          :             { text: 'Good evening',    emoji: '🌙' };
+  const firstName = currentUser?.displayName?.split(' ')[0] || '';
+  return { text: firstName ? `${g.text}, ${firstName}` : g.text, emoji: g.emoji };
 }
 
 function dueLabel(str) {
@@ -314,15 +341,7 @@ function renderStatusLine() {
   const el = document.getElementById('statusLine');
   if (!el) return;
 
-  const now  = new Date();
-  const hour = now.getHours();
-  // Uses the device's own clock, so it follows whatever timezone the phone is set to.
-  const greeting    = hour < 6  ? "You're up early"   // 12am–5:59am — the wee hours
-                    : hour < 12 ? 'Good morning'
-                    : hour < 17 ? 'Good afternoon'
-                    : 'Good evening';
-  const firstName   = currentUser?.displayName?.split(' ')[0] || '';
-  const greetingText = firstName ? `${greeting}, ${firstName}` : greeting;
+  const greetingText = greetingLine().text;
 
   const today     = todayStr();
   const todayDate = new Date(today + 'T00:00:00');
@@ -4024,6 +4043,11 @@ function leaveBoard() {
   // Exit connect mode cleanly
   if (connectMode) exitConnectMode();
 
+  /* Seed this board's card count from the copy we already have in memory, so
+     pressing "Boards" shows the right number straight away instead of waiting
+     on a round trip (the background refresh still runs and confirms it). */
+  if (currentBoardId) boardStats.set(currentBoardId, statsFromTasks(tasks));
+
   currentBoardId = null;
 
   // Reset board-level state
@@ -4045,11 +4069,68 @@ function leaveBoard() {
   showHomeScreen();
 }
 
+// ── Board stats on the home cards ─────────────────────────
+/* Each board's tasks live in its own Firestore doc, so the home screen has to
+   go and fetch them. Two decisions worth knowing:
+
+   1. Cards render immediately and the counts drop in when they arrive. A slow
+      connection delays a line of small text, never the whole screen.
+   2. We cache the open tasks' DUE DATES, not a finished count. The label is
+      worked out from today's date every time it's painted, so "2 overdue"
+      is still right tomorrow morning without anyone reopening the board — a
+      stored count would quietly rot, which is the one thing a deadline app
+      must not do. */
+const boardStats = new Map();       // boardId → { total, open, due: [dateStr] }
+
+function statsFromTasks(list) {
+  const all  = list || [];
+  const open = all.filter(t => !t.done);
+  return { total: all.length, open: open.length, due: open.filter(t => t.due).map(t => t.due) };
+}
+
+function boardStatLabel(s) {
+  if (!s) return null;                                   // not fetched yet
+  if (s.total === 0) return { text: 'Empty board',        cls: 'quiet' };
+  const overdue = s.due.filter(d => daysUntil(d) <  0).length;
+  const today   = s.due.filter(d => daysUntil(d) === 0).length;
+  const week    = s.due.filter(d => { const n = daysUntil(d); return n > 0 && n <= 7; }).length;
+  if (overdue) return { text: `${overdue} overdue`,       cls: 'overdue' };
+  if (today)   return { text: `${today} due today`,       cls: 'soon' };
+  if (week)    return { text: `${week} due this week`,    cls: '' };
+  if (s.open)  return { text: `${s.open} to do`,          cls: '' };
+  return { text: 'All caught up ✨',                       cls: 'clear' };
+}
+
+function paintBoardStats() {
+  document.querySelectorAll('.home-board-card').forEach(card => {
+    const el = card.querySelector('.home-board-stat');
+    if (!el) return;
+    const label = boardStatLabel(boardStats.get(card.dataset.boardId));
+    el.textContent = label ? label.text : '';
+    el.className   = 'home-board-stat' + (label && label.cls ? ' ' + label.cls : '');
+  });
+}
+
+async function refreshBoardStats() {
+  const ids = boardsMeta.map(b => b.id);
+  await Promise.all(ids.map(async id => {
+    try {
+      const snap = await getDoc(boardDocRef(id));
+      boardStats.set(id, statsFromTasks(snap.exists() ? snap.data().tasks : []));
+    } catch (_) {
+      /* Offline or a permissions hiccup — leave whatever we had. The line just
+         stays blank rather than showing a wrong number. */
+    }
+  }));
+  paintBoardStats();
+}
+
 // ── Home screen ───────────────────────────────────────────
 function showHomeScreen() {
   const homeViewEl = document.getElementById('homeView');
   homeViewEl.classList.remove('hidden');
   playEntrance(homeViewEl, 'home-entering', 380);   // home screen eases back in
+  renderHomeGreeting();
   renderHomeScreen();
 }
 
@@ -4062,13 +4143,19 @@ function renderHomeScreen() {
     const card = document.createElement('div');
     card.className = 'home-board-card';
     card.dataset.boardId = board.id;
+    // A colour is optional — without one the card keeps its plain surface.
+    if (board.color) {
+      card.classList.add('tinted');
+      card.style.setProperty('--board-color', board.color);
+    }
     card.innerHTML = `
       <div class="home-board-actions">
-        <button class="home-board-action-btn home-board-rename" title="Rename" data-board-id="${board.id}">✏️</button>
+        <button class="home-board-action-btn home-board-edit" title="Edit board" data-board-id="${board.id}">✏️</button>
         <button class="home-board-action-btn home-board-delete" title="Delete board" data-board-id="${board.id}">🗑️</button>
       </div>
       <div class="home-board-emoji">${escHtml(board.emoji || '📋')}</div>
       <div class="home-board-name">${escHtml(board.name)}</div>
+      <div class="home-board-stat"></div>
     `;
 
     // Open on click (not on action buttons)
@@ -4077,15 +4164,10 @@ function renderHomeScreen() {
       openBoard(board.id);
     });
 
-    // Rename
-    card.querySelector('.home-board-rename').addEventListener('click', e => {
+    // Edit — name, icon and colour, in one small panel
+    card.querySelector('.home-board-edit').addEventListener('click', e => {
       e.stopPropagation();
-      const newName = prompt('Rename board:', board.name);
-      if (newName && newName.trim()) {
-        board.name = newName.trim();
-        saveBoardsMeta();
-        renderHomeScreen();
-      }
+      openBoardEdit(board.id);
     });
 
     // Delete
@@ -4104,6 +4186,20 @@ function renderHomeScreen() {
 
     grid.appendChild(card);
   });
+
+  paintBoardStats();      // anything already cached shows instantly…
+  refreshBoardStats();    // …and the rest fills in when it lands
+}
+
+/* The greeting above "My Boards". Repainted on every visit so it's right if
+   the app has been left open past midnight. */
+function renderHomeGreeting() {
+  const el = document.getElementById('homeGreeting');
+  if (!el) return;
+  const g = greetingLine();
+  // The emoji goes in its own span — most emoji glyphs carry almost no right
+  // side-bearing, so a plain space renders too tight against the text.
+  el.innerHTML = `<span class="home-greeting-emoji">${escHtml(g.emoji)}</span>${escHtml(g.text)}`;
 }
 
 async function createNewBoard() {
@@ -4121,6 +4217,70 @@ async function createNewBoard() {
     if (nameEl) nameEl.textContent = `${meta.emoji} ${meta.name}`;
   }
 }
+
+// ── Edit Board panel (the ✏️ on a board card) ─────────────
+let editingBoardId  = null;
+let editingBoardHex = '';
+
+function renderBoardColorRow() {
+  const row = document.getElementById('boardColorRow');
+  if (!row) return;
+  row.innerHTML = BOARD_COLORS.map(c => `
+    <button type="button" class="board-color-swatch${c.hex === editingBoardHex ? ' active' : ''}${c.hex ? '' : ' none'}"
+            style="${c.hex ? `--swatch:${c.hex}` : ''}" data-hex="${c.hex}"
+            title="${c.label}" aria-label="${c.label}"></button>`).join('');
+}
+
+function openBoardEdit(boardId) {
+  const board = boardsMeta.find(b => b.id === boardId);
+  if (!board) return;
+  editingBoardId  = boardId;
+  editingBoardHex = board.color || '';
+  document.getElementById('boardEditName').value  = board.name  || '';
+  document.getElementById('boardEditEmoji').value = board.emoji || '';
+  renderBoardColorRow();
+  document.getElementById('boardEditOverlay').classList.remove('hidden');
+  document.getElementById('boardEditName').focus();
+}
+
+function closeBoardEdit() {
+  document.getElementById('boardEditOverlay').classList.add('hidden');
+  editingBoardId = null;
+}
+
+document.getElementById('boardColorRow')?.addEventListener('click', e => {
+  const sw = e.target.closest('.board-color-swatch');
+  if (!sw) return;
+  editingBoardHex = sw.dataset.hex || '';
+  renderBoardColorRow();
+});
+
+document.getElementById('boardEditForm')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const board = boardsMeta.find(b => b.id === editingBoardId);
+  if (!board) return closeBoardEdit();
+
+  const name = document.getElementById('boardEditName').value.trim();
+  if (!name) return;                                   // the field is required anyway
+  board.name  = name;
+  board.emoji = document.getElementById('boardEditEmoji').value.trim() || '📋';
+  // Empty string means "no colour" — drop the key rather than storing "".
+  if (editingBoardHex) board.color = editingBoardHex; else delete board.color;
+
+  closeBoardEdit();
+  renderHomeScreen();
+  await saveBoardsMeta();
+
+  // The header shows the name too, if this board happens to be open.
+  const nameEl = document.getElementById('currentBoardName');
+  if (nameEl && currentBoardId === board.id) nameEl.textContent = `${board.emoji} ${board.name}`;
+});
+
+document.getElementById('closeBoardEdit')?.addEventListener('click', closeBoardEdit);
+document.getElementById('cancelBoardEdit')?.addEventListener('click', closeBoardEdit);
+document.getElementById('boardEditOverlay')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('boardEditOverlay')) closeBoardEdit();
+});
 
 // ── Sign-out button ───────────────────────────────────────
 document.getElementById('signOutBtn').addEventListener('click', () => signOut(auth));

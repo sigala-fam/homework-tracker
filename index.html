@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=midnight11" />
+  <link rel="stylesheet" href="style.css?v=midnight12" />
 </head>
 <body>
 
@@ -172,6 +172,7 @@
   <!-- ── Home Screen (board selector) ── -->
   <div id="homeView" class="home-view hidden">
     <div class="home-content">
+      <p class="home-greeting" id="homeGreeting"></p>
       <h2 class="home-title">My Boards</h2>
       <p class="home-subtitle">Pick one to jump back in, or start a new one.</p>
       <div class="home-boards-grid" id="homeBoardsGrid">
@@ -424,6 +425,39 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Edit Board Modal (the ✏️ on a board card) ── -->
+  <!-- Replaces the old browser prompt() rename, so the icon and colour can be
+       changed in the same place as the name. -->
+  <div class="modal-overlay hidden" id="boardEditOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Edit Board</h3>
+        <button class="modal-close" id="closeBoardEdit" aria-label="Close">✕</button>
+      </div>
+      <form id="boardEditForm" class="task-form">
+        <div class="form-row">
+          <div class="form-group board-edit-icon">
+            <label for="boardEditEmoji">Icon</label>
+            <input type="text" id="boardEditEmoji" maxlength="4" placeholder="📋" />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label for="boardEditName">Board name</label>
+            <input type="text" id="boardEditName" placeholder="e.g. School" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Colour</label>
+          <p class="modal-hint">Tints the board's card so you can spot it at a glance.</p>
+          <div class="board-color-row" id="boardColorRow"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelBoardEdit">Cancel</button>
+          <button type="submit" class="btn-save">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -717,6 +751,6 @@
 
   <!-- ?v= busts stale browser caches on deploy — bump it (here and on the
        midnight.js import inside app.js) whenever the scripts change. -->
-  <script type="module" src="app.js?v=midnight11"></script>
+  <script type="module" src="app.js?v=midnight12"></script>
 </body>
 </html>
