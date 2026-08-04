@@ -9,6 +9,10 @@ import { getAuth, onAuthStateChanged, signOut, updateProfile,
 import { getFirestore, doc, getDoc, setDoc, deleteDoc }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
+// ── Midnight, the pixel-cat on the sign-in screen ─────────
+import { mountMidnight, midnightOn, setMidnightOn, onMidnightChange,
+         midnightPrefs, midnightAdopt } from './midnight.js?v=midnight11';
+
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
   authDomain:        'homework-tracker-761e1.firebaseapp.com',
@@ -3856,6 +3860,8 @@ async function loadUserData() {
 
   // Load settings (user-level)
   if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
+  // …and Midnight's own preferences, so she looks the same on every device
+  if (d.midnight) restoreMidnightPrefs(d.midnight);
 
   if (d.boardsMeta && d.boardsMeta.length > 0) {
     // Multi-board user — just load the board list; board data loaded on openBoard()
@@ -4143,6 +4149,62 @@ function playEntrance(el, animClass, duration) {
   el.classList.add(animClass);
   setTimeout(() => el.classList.remove(animClass), duration);
 }
+
+// Midnight lives on her ledge above BOTH cards, so she carries straight over
+// from the welcome screen to the sign-in card without skipping a beat. No
+// picker here — that lives in Settings; this scene just follows the choice.
+// The page tints itself to match whatever her window is showing.
+// Her room is only built if it's switched on — a user who turns it off never
+// pays for drawing it. Toggling later takes effect straight away.
+function applyMidnightVisibility() {
+  const on = midnightOn();
+  loginOverlay.classList.toggle('no-midnight', !on);
+  if (on) {
+    mountMidnight(document.getElementById('midnightScene'), {
+      mode: 'full',                   // her room IS the page, not a picture on it
+      onPhase: p => { loginOverlay.dataset.phase = p; }
+    });                               // no-ops if it's already built
+  }
+}
+applyMidnightVisibility();
+
+// ── Midnight's preferences follow the account ──
+// localStorage stays the working copy (the sign-in screen has to draw her
+// before anyone is signed in); Firestore is the copy that travels between
+// devices. loadUserData() pulls it back down on sign-in.
+let midnightRestoring = false;
+onMidnightChange(() => {
+  applyMidnightVisibility();
+  if (midnightRestoring || !currentUser) return;   // don't echo the restore straight back
+  setDoc(userDocRef(), { midnight: midnightPrefs() }, { merge: true });
+});
+function restoreMidnightPrefs(prefs) {
+  midnightRestoring = true;
+  try { midnightAdopt(prefs); } finally { midnightRestoring = false; }
+  applyMidnightVisibility();
+}
+
+// ── Midnight's window panel (Settings → "Choose her window…") ──
+// Built on first open, so a user who never looks doesn't pay for it.
+const midnightOverlay = document.getElementById('midnightOverlay');
+function openMidnightPanel() {
+  midnightOverlay.classList.remove('hidden');
+  mountMidnight(document.getElementById('midnightSettingsScene'), { picker: true });
+  const box = document.getElementById('midnightEnabled');
+  box.checked = midnightOn();
+  midnightOverlay.classList.toggle('midnight-off', !box.checked);
+}
+document.getElementById('midnightEnabled').addEventListener('change', e => {
+  setMidnightOn(e.target.checked);          // applyMidnightVisibility runs via the watcher
+  midnightOverlay.classList.toggle('midnight-off', !e.target.checked);
+});
+function closeMidnightPanel() { midnightOverlay.classList.add('hidden'); }
+document.getElementById('openMidnightSettings').addEventListener('click', openMidnightPanel);
+document.getElementById('closeMidnight').addEventListener('click', closeMidnightPanel);
+document.getElementById('doneMidnight').addEventListener('click', closeMidnightPanel);
+midnightOverlay.addEventListener('click', e => {
+  if (e.target === midnightOverlay) closeMidnightPanel();
+});
 
 // Welcome screen → smoothly fade into the sign-in card
 document.getElementById('btnGetStarted').addEventListener('click', () => {

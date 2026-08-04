@@ -9,12 +9,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=canvas9" />
+  <link rel="stylesheet" href="style.css?v=midnight11" />
 </head>
 <body>
 
   <!-- ── Login Screen ── -->
   <div id="loginOverlay" class="login-overlay">
+
+    <!-- ── Midnight's ledge, above BOTH cards so she stays put when they swap.
+           The art, her roaming brain and the weather buttons live in
+           midnight.js. Only the picture is aria-hidden (mountMidnight marks
+           it) — the buttons underneath stay reachable. ── -->
+    <div id="midnightScene" class="midnight-scene"></div>
 
     <!-- ── Welcome screen (shown first, before sign-in) ── -->
     <div id="welcomeScreen" class="welcome-card">
@@ -578,6 +584,12 @@
       </div>
 
       <div class="settings-section">
+        <h4 class="settings-heading">Midnight</h4>
+        <p class="modal-hint">Your pixel cat on the sign-in screen. Pick the weather outside her window.</p>
+        <button type="button" class="btn-cancel" id="openMidnightSettings">Choose her window…</button>
+      </div>
+
+      <div class="settings-section">
         <h4 class="settings-heading">Developer Mode</h4>
         <p class="modal-hint">After finishing a task, log how long it actually took. Unlocks a Stats tab in the Plan view.</p>
         <label class="toggle-switch">
@@ -590,6 +602,29 @@
       <div class="form-actions">
         <button class="btn-cancel" id="cancelSettings">Cancel</button>
         <button class="btn-save" id="saveSettingsBtn">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Midnight's window (opened from Settings) ──
+       Its own panel, because the choice saves the moment you click it —
+       it isn't part of Settings' Cancel/Save. Room to grow into a full
+       page later. The scene is built by midnight.js on first open. -->
+  <div class="modal-overlay hidden" id="midnightOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Midnight’s window</h3>
+        <button class="modal-close" id="closeMidnight" aria-label="Close">✕</button>
+      </div>
+      <label class="toggle-switch midnight-onoff">
+        <input type="checkbox" id="midnightEnabled" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span>Show Midnight on the sign-in screen</span>
+      </label>
+      <p class="modal-hint">“Auto” follows the time of day. The rest stay put.</p>
+      <div id="midnightSettingsScene" class="midnight-scene"></div>
+      <div class="form-actions">
+        <button class="btn-save" id="doneMidnight">Done</button>
       </div>
     </div>
   </div>
@@ -679,6 +714,8 @@
 
   </div><!-- /#mainApp -->
 
-  <script type="module" src="app.js"></script>
+  <!-- ?v= busts stale browser caches on deploy — bump it (here and on the
+       midnight.js import inside app.js) whenever the scripts change. -->
+  <script type="module" src="app.js?v=midnight11"></script>
 </body>
 </html>

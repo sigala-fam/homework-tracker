@@ -1787,9 +1787,135 @@ body {
 .login-overlay {
   position: fixed; inset: 0;
   background: var(--bg);
-  display: flex; align-items: center; justify-content: center;
+  /* a column so Midnight's ledge can sit above the cards; the auto margins
+     below keep everything centred but still let it scroll if space is tight */
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  overflow-y: auto;
   z-index: 300;
-  padding: 20px;
+  /* the top third is Midnight's shelf, so the cards start below it */
+  padding: 36vh 20px 20px;
+  /* The page catches a little of the light coming through Midnight's window.
+     Deliberately gentle — it's a wash over the theme's own background, not a
+     new colour scheme, so TaskNest still looks like TaskNest in both themes.
+     midnight.js stamps data-phase here as her weather changes. */
+  background-image: radial-gradient(125% 78% at 50% 0%,
+                    var(--sky-wash, transparent) 0%, transparent 62%);
+  transition: background-image 0.6s ease;
+}
+.login-overlay[data-phase="rainy"]   { --sky-wash: rgba( 88,110,142, 0.34); }
+.login-overlay[data-phase="sunny"]   { --sky-wash: rgba( 96,168,232, 0.32); }
+.login-overlay[data-phase="evening"] { --sky-wash: rgba(214,124, 86, 0.30); }
+.login-overlay[data-phase="night"]   { --sky-wash: rgba( 68, 72,132, 0.36); }
+
+/* ══ Midnight's ledge scene (above the sign-in cards) ══════
+   Art + roaming brain: midnight.js. The picture itself is purely decorative
+   and has pointer-events off, so it can never swallow a tap meant for a
+   sign-in button; only the little weather buttons below it are clickable. */
+.midnight-scene { width: 100%; max-width: 400px; }
+/* the copy inside the Settings panel — still a little framed picture */
+#midnightSettingsScene { margin: 0 auto 18px; }
+
+/* ── On the sign-in screen her room IS the page: no frame, no border, the
+      ledge running the full width with the cards floating below it. ── */
+.login-overlay .midnight-scene {
+  position: fixed; inset: 0; max-width: none;
+  z-index: 0; pointer-events: none;
+  animation: view-fade-in 0.6s ease both;
+}
+.login-overlay .midnight-stage {
+  position: absolute; inset: 0;
+  border: none; border-radius: 0; box-shadow: none; overflow: hidden;
+}
+/* three classes deep on purpose: the boxed `.midnight-stage .midnight-room`
+   rule below sets height:auto at equal specificity and would otherwise win on
+   source order, leaving a gap at the foot of the page */
+.login-overlay .midnight-stage .midnight-room { width: 100%; height: 100%; }
+/* the cards sit in front of the room, in the dim part below the shelf */
+.login-overlay > .welcome-card, .login-overlay > .login-card { position: relative; z-index: 1; }
+.midnight-stage {
+  position: relative;
+  border-radius: 18px; overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  line-height: 0;
+  pointer-events: none;
+}
+.midnight-stage svg { display: block; image-rendering: pixelated; shape-rendering: crispEdges; }
+.midnight-stage .midnight-room { width: 100%; height: auto; }
+/* she is 46 cells wide on a 300-cell scene (15.33%), standing on the ledge */
+.midnight-stage .midnight-cat {
+  position: absolute; width: 15.33%; height: auto;
+  bottom: 12.5%; left: 50%; transform: translateX(-50%);
+}
+/* auto margins centre the card in the space under the shelf, and — unlike
+   justify-content:center — degrade safely instead of clipping when it's tall */
+.welcome-card, .login-card { margin: auto 0; }
+
+/* ── pick the weather ── */
+.midnight-looks {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 5px; margin-top: 9px;
+}
+.midnight-look {
+  font-family: inherit; font-size: 11px; font-weight: 500; line-height: 1;
+  color: var(--muted); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 10px; cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.midnight-look:hover { color: var(--text); border-color: var(--accent-border); }
+/* fingers need more room than a mouse pointer */
+@media (pointer: coarse) { .midnight-look { padding: 10px 13px; font-size: 11.5px; } }
+.midnight-look[aria-pressed="true"] {
+  color: #fff; background: var(--accent); border-color: var(--accent);
+}
+
+/* Her little animations. Walking flips between two drawings; the rest is
+   slow breathing, drifting Zzz and stars twinkling out of step. */
+/* 0.5s = 4 steps a second, which is the stride that matches her 15%/sec
+   walking speed. Speed them up without speeding her up and she moonwalks. */
+.pose-walk .walkA { animation: mn-frameA 0.50s steps(1) infinite; }
+.pose-walk .walkB { animation: mn-frameB 0.50s steps(1) infinite; }
+@keyframes mn-frameA { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+@keyframes mn-frameB { 0%,49% { opacity: 0; } 50%,100% { opacity: 1; } }
+.pose-nap    { transform-origin: 50% 100%; animation: mn-breathe 3.4s ease-in-out infinite; }
+.pose-lounge { transform-origin: 50% 100%; animation: mn-breathe 4.2s ease-in-out infinite; }
+@keyframes mn-breathe { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
+.pet-z { animation: mn-z 3.4s ease-in-out infinite; }
+@keyframes mn-z {
+  0%   { opacity: 0; transform: translateY(2px); }
+  35%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+.twinkle-a { animation: mn-tw 3.6s ease-in-out infinite; }
+.twinkle-b { animation: mn-tw 4.9s ease-in-out infinite 1.2s; }
+.twinkle-c { animation: mn-tw 6.1s ease-in-out infinite 2.4s; }
+@keyframes mn-tw { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
+/* Rain: each sheet slides down by exactly one pattern-repeat (12 grid rows)
+   and starts over, so the loop is invisible. Near drops fall faster. */
+.rain-a { animation: mn-rain 0.55s linear infinite; }
+.rain-b { animation: mn-rain 0.95s linear infinite; }
+@keyframes mn-rain { from { transform: translateY(0); } to { transform: translateY(12px); } }
+
+/* Shorter screens: shrink her room, then tuck it away entirely so the
+   sign-in buttons always have room. */
+/* Landscape phones: there isn't room for both a room and a sign-in card, so
+   the room steps aside and the card takes the whole screen back. */
+@media (max-height: 520px) {
+  .login-overlay .midnight-scene { display: none; }
+  .login-overlay { padding: 20px; }
+}
+/* …and the same when Midnight is switched off in Settings */
+.login-overlay.no-midnight .midnight-scene { display: none; }
+.login-overlay.no-midnight { padding: 20px; background-image: none; }
+
+/* the Settings panel dims its preview when she's switched off */
+.midnight-onoff { margin-bottom: 14px; }
+.midnight-off #midnightSettingsScene,
+.midnight-off .midnight-looks { opacity: 0.4; }
+@media (prefers-reduced-motion: reduce) {
+  .midnight-scene, .midnight-scene * { animation: none !important; }
 }
 
 .login-card {
