@@ -3,18 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TaskNest — a personal homework and task tracker for students. Organize assignments, track deadlines, and plan your study schedule." />
+  <meta name="description" content="TaskNest is a free homework tracker made by a student. See everything that's due, know what to do next, and finish on time." />
+  <link rel="canonical" href="https://homework-tracker-ashy.vercel.app/" />
+  <!-- how TaskNest looks when the link is shared (messages, social media) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="TaskNest" />
+  <meta property="og:title" content="TaskNest — Homework, sorted." />
+  <meta property="og:description" content="A free homework tracker made by a student. See everything that's due, know what to do next, and finish on time." />
+  <meta property="og:url" content="https://homework-tracker-ashy.vercel.app/" />
+  <meta property="og:image" content="https://homework-tracker-ashy.vercel.app/brand/tasknest-profile-picture.png" />
   <title>TaskNest — Homework Tracker</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23A855F7'/><stop offset='100%25' stop-color='%23EC4899'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><polyline points='22,58 42,78 78,28' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Merriweather:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=midnight12" />
+  <script>
+    // Light or dark before anything draws: your saved choice if you've made
+    // one in TaskNest, otherwise whatever your computer is set to.
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('hw-theme')
+        || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="style.css?v=landing12" />
 </head>
-<body>
+<!-- "booting" = we don't know yet if you're signed in, so show the grey
+     skeleton instead of flashing the wrong screen. app.js removes it. -->
+<body class="booting" data-boot="page">
 
   <!-- ── Login Screen ── -->
-  <div id="loginOverlay" class="login-overlay">
+  <div id="loginOverlay" class="login-overlay landing-mode">
 
     <!-- ── Midnight's ledge, above BOTH cards so she stays put when they swap.
            The art, her roaming brain and the weather buttons live in
@@ -22,21 +40,152 @@
            it) — the buttons underneath stay reachable. ── -->
     <div id="midnightScene" class="midnight-scene"></div>
 
-    <!-- ── Welcome screen (shown first, before sign-in) ── -->
-    <div id="welcomeScreen" class="welcome-card">
-      <div class="welcome-logo-icon" aria-hidden="true">
-        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="44" height="44">
-          <polyline points="6,22 16,32 34,10" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+    <!-- ── Loading skeleton: grey shimmering placeholders shown while
+           Firebase works out who you are (and, if you're signed in, while
+           your boards load). "page" and "board" are two different shapes. ── -->
+    <div id="bootSkeleton" class="boot-skeleton" aria-hidden="true">
+      <div class="sk-bar"><span class="sk sk-logo"></span><span class="sk sk-pill"></span></div>
+      <div class="sk-page">
+        <span class="sk sk-icon"></span>
+        <span class="sk sk-title"></span>
+        <span class="sk sk-line"></span>
+        <span class="sk sk-line short"></span>
+        <span class="sk sk-button"></span>
       </div>
-      <h1 class="welcome-title">
-        <span class="logo-task">Task</span><span class="logo-nest">Nest</span>
-      </h1>
-      <p class="welcome-tagline">Your homework, deadlines, and study plans — all cozy in one little nest.</p>
-      <button id="btnGetStarted" class="btn-get-started">Get Started</button>
+      <div class="sk-board">
+        <div class="sk-col"><span class="sk sk-col-head"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>
+        <div class="sk-col"><span class="sk sk-col-head"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>
+        <div class="sk-col"><span class="sk sk-col-head"></span><span class="sk sk-card"></span><span class="sk sk-card"></span><span class="sk sk-card"></span></div>
+      </div>
+      <p class="sr-only" role="status">Loading TaskNest…</p>
+    </div>
+
+    <!-- ── Entry page (shown first, before sign-in): a scrolling page that
+           explains TaskNest, with the legal links in the footer. ── -->
+    <div id="welcomeScreen" class="landing">
+
+      <header class="landing-bar">
+        <a href="#" class="landing-bar-logo" aria-label="TaskNest home">
+          <span class="landing-bar-icon" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none" width="18" height="18"><polyline points="6,22 16,32 34,10" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span><span class="logo-task">Task</span><span class="logo-nest">Nest</span></span>
+        </a>
+        <button class="btn-landing-login" data-open-login="signin">Log in</button>
+      </header>
+
+      <!-- 1. Welcome: headline on the left, a little picture of a board on
+           the right. The board is drawn with HTML (made-up homework, never a
+           real account), so it's crisp at any size and follows light/dark. -->
+      <section class="landing-hero">
+        <div class="landing-hero-text">
+          <h1 class="landing-h1">Homework, <em>sorted.</em></h1>
+          <p class="landing-hero-sub">See everything that's due, know exactly what to do next, and finish on time — all cozy in one little nest.</p>
+          <div class="landing-cta-wrap">
+            <!-- Midnight perches on the button (app.js fills this in) -->
+            <span id="buttonCat" class="button-cat" aria-hidden="true"></span>
+            <button id="btnGetStarted" class="btn-get-started landing-hero-btn" data-open-login="signup">Create your free account</button>
+          </div>
+          <button class="btn-text-link landing-hero-login" data-open-login="signin">Already have an account? Log in</button>
+        </div>
+
+        <div class="board-preview" aria-label="A preview of a TaskNest board with example homework" role="img">
+          <div class="bp-chrome"><span></span><span></span><span></span><b>My Homework</b></div>
+          <div class="bp-tabs"><span class="on">Board</span><span>Calendar</span><span>Plan</span></div>
+          <div class="bp-cols">
+            <div class="bp-col" style="--c:#7C3AED">
+              <p class="bp-head">Math</p>
+              <div class="bp-card"><p>Page 42, problems 1–20</p><span class="bp-due">Tue</span></div>
+              <div class="bp-card"><p>Quiz review</p><span class="bp-due">Thu</span><span class="bp-check">2/4</span></div>
+            </div>
+            <div class="bp-col" style="--c:#0F766E">
+              <p class="bp-head">English</p>
+              <div class="bp-card"><p>Reading log, ch. 5</p><span class="bp-due">Wed</span></div>
+              <div class="bp-card"><p>Essay outline</p><span class="bp-due">Fri</span><span class="bp-part">Part 1 of 2</span></div>
+            </div>
+            <div class="bp-col" style="--c:#C2410C">
+              <p class="bp-head">Science</p>
+              <div class="bp-card bp-done"><p>Vocab flashcards</p><span class="bp-due">Done</span></div>
+              <div class="bp-card"><p>Lab report</p><span class="bp-due bp-soon">Tomorrow</span></div>
+              <div class="bp-note">Bring goggles!</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Why TaskNest exists — the maker's own story, in their words -->
+      <section id="landingGoal" class="landing-section">
+        <div class="landing-inner">
+          <p class="landing-eyebrow">Why TaskNest exists</p>
+          <h2 class="landing-h2">Made by a student, for students.</h2>
+          <div class="landing-story">
+            <p>I built TaskNest for myself and my friends. There are some great homework trackers out there, but most of them cost money, have limits, or are missing something I needed. So I made one that has everything I wanted, and kept it free.</p>
+            <p>The Plan feature is the part I care about most. When you're stuck and can't decide which task to start with, TaskNest shows you what to do first, so getting started is the easy part.</p>
+            <p>My goal is simple: help people get their work done, stay organized, and feel a lot less stressed.</p>
+            <p>And if TaskNest is missing something you need, tell me. Signed-in users can send a feature suggestion right from the app. TaskNest is built to grow with the people who use it.</p>
+            <p class="landing-story-sign">— the student who made TaskNest</p>
+          </div>
+          <div class="landing-goals">
+            <div class="landing-goal"><span class="landing-goal-num">1</span><h3>See it all</h3><p>Every assignment, test and event in one cozy place.</p></div>
+            <div class="landing-goal"><span class="landing-goal-num">2</span><h3>Know what's next</h3><p>TaskNest works out what's most urgent, so you don't have to.</p></div>
+            <div class="landing-goal"><span class="landing-goal-num">3</span><h3>Finish on time</h3><p>A daily plan that splits big jobs into small, doable pieces.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Features (pixel icons drawn in Midnight's style, 16×16) -->
+      <section class="landing-section landing-section-alt">
+        <div class="landing-inner">
+          <p class="landing-eyebrow">What you can do</p>
+          <h2 class="landing-h2">Everything your homework needs</h2>
+          <div class="landing-features">
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="6" y="1" width="4" height="1" fill="currentColor"/><rect x="4" y="2" width="2" height="1" fill="currentColor"/><rect x="6" y="2" width="4" height="1" fill="#CBD5E1"/><rect x="10" y="2" width="2" height="1" fill="currentColor"/><rect x="1" y="3" width="1" height="1" fill="currentColor"/><rect x="2" y="3" width="12" height="1" fill="#E7C9A0"/><rect x="14" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="1" height="1" fill="currentColor"/><rect x="2" y="4" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="4" width="8" height="1" fill="#FFFFFF"/><rect x="12" y="4" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="5" width="1" height="1" fill="currentColor"/><rect x="2" y="5" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="5" width="1" height="1" fill="#FFFFFF"/><rect x="5" y="5" width="4" height="1" fill="#8B5CF6"/><rect x="9" y="5" width="3" height="1" fill="#FFFFFF"/><rect x="12" y="5" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="5" width="1" height="1" fill="currentColor"/><rect x="1" y="6" width="1" height="1" fill="currentColor"/><rect x="2" y="6" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="6" width="8" height="1" fill="#FFFFFF"/><rect x="12" y="6" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="6" width="1" height="1" fill="currentColor"/><rect x="1" y="7" width="1" height="1" fill="currentColor"/><rect x="2" y="7" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="5" y="7" width="5" height="1" fill="#F43F5E"/><rect x="10" y="7" width="2" height="1" fill="#FFFFFF"/><rect x="12" y="7" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="7" width="1" height="1" fill="currentColor"/><rect x="1" y="8" width="1" height="1" fill="currentColor"/><rect x="2" y="8" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="8" width="8" height="1" fill="#FFFFFF"/><rect x="12" y="8" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="8" width="1" height="1" fill="currentColor"/><rect x="1" y="9" width="1" height="1" fill="currentColor"/><rect x="2" y="9" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="9" width="1" height="1" fill="#FFFFFF"/><rect x="5" y="9" width="4" height="1" fill="#22C55E"/><rect x="9" y="9" width="3" height="1" fill="#FFFFFF"/><rect x="12" y="9" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="10" width="1" height="1" fill="currentColor"/><rect x="2" y="10" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="10" width="8" height="1" fill="#FFFFFF"/><rect x="12" y="10" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="10" width="1" height="1" fill="currentColor"/><rect x="1" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="11" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="11" width="1" height="1" fill="#FFFFFF"/><rect x="5" y="11" width="6" height="1" fill="#60A5FA"/><rect x="11" y="11" width="1" height="1" fill="#FFFFFF"/><rect x="12" y="11" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="11" width="1" height="1" fill="currentColor"/><rect x="1" y="12" width="1" height="1" fill="currentColor"/><rect x="2" y="12" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="12" width="8" height="1" fill="#FFFFFF"/><rect x="12" y="12" width="2" height="1" fill="#E7C9A0"/><rect x="14" y="12" width="1" height="1" fill="currentColor"/><rect x="1" y="13" width="1" height="1" fill="currentColor"/><rect x="2" y="13" width="12" height="1" fill="#E7C9A0"/><rect x="14" y="13" width="1" height="1" fill="currentColor"/><rect x="2" y="14" width="12" height="1" fill="currentColor"/></svg></span><h3>Boards</h3><p>Sort homework into columns by class or day, then drag cards around as things change.</p></div>
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="4" y="1" width="1" height="1" fill="currentColor"/><rect x="11" y="1" width="1" height="1" fill="currentColor"/><rect x="1" y="2" width="14" height="1" fill="currentColor"/><rect x="1" y="3" width="1" height="1" fill="currentColor"/><rect x="2" y="3" width="12" height="1" fill="#F43F5E"/><rect x="14" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="1" height="1" fill="currentColor"/><rect x="2" y="4" width="12" height="1" fill="#F43F5E"/><rect x="14" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="5" width="14" height="1" fill="currentColor"/><rect x="1" y="6" width="1" height="1" fill="currentColor"/><rect x="2" y="6" width="12" height="1" fill="#FFFFFF"/><rect x="14" y="6" width="1" height="1" fill="currentColor"/><rect x="1" y="7" width="1" height="1" fill="currentColor"/><rect x="2" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="7" width="2" height="1" fill="#CBD5E1"/><rect x="5" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="6" y="7" width="2" height="1" fill="#CBD5E1"/><rect x="8" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="9" y="7" width="2" height="1" fill="#CBD5E1"/><rect x="11" y="7" width="3" height="1" fill="#FFFFFF"/><rect x="14" y="7" width="1" height="1" fill="currentColor"/><rect x="1" y="8" width="1" height="1" fill="currentColor"/><rect x="2" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="8" width="2" height="1" fill="#CBD5E1"/><rect x="5" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="6" y="8" width="2" height="1" fill="#CBD5E1"/><rect x="8" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="9" y="8" width="2" height="1" fill="#CBD5E1"/><rect x="11" y="8" width="3" height="1" fill="#FFFFFF"/><rect x="14" y="8" width="1" height="1" fill="currentColor"/><rect x="1" y="9" width="1" height="1" fill="currentColor"/><rect x="2" y="9" width="12" height="1" fill="#FFFFFF"/><rect x="14" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="10" width="1" height="1" fill="currentColor"/><rect x="2" y="10" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="10" width="2" height="1" fill="#CBD5E1"/><rect x="5" y="10" width="1" height="1" fill="#FFFFFF"/><rect x="6" y="10" width="2" height="1" fill="#8B5CF6"/><rect x="8" y="10" width="1" height="1" fill="#FFFFFF"/><rect x="9" y="10" width="2" height="1" fill="#CBD5E1"/><rect x="11" y="10" width="3" height="1" fill="#FFFFFF"/><rect x="14" y="10" width="1" height="1" fill="currentColor"/><rect x="1" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="11" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="11" width="2" height="1" fill="#CBD5E1"/><rect x="5" y="11" width="1" height="1" fill="#FFFFFF"/><rect x="6" y="11" width="2" height="1" fill="#8B5CF6"/><rect x="8" y="11" width="1" height="1" fill="#FFFFFF"/><rect x="9" y="11" width="2" height="1" fill="#CBD5E1"/><rect x="11" y="11" width="3" height="1" fill="#FFFFFF"/><rect x="14" y="11" width="1" height="1" fill="currentColor"/><rect x="1" y="12" width="1" height="1" fill="currentColor"/><rect x="2" y="12" width="12" height="1" fill="#FFFFFF"/><rect x="14" y="12" width="1" height="1" fill="currentColor"/><rect x="1" y="13" width="14" height="1" fill="currentColor"/></svg></span><h3>Calendar</h3><p>Month and week views show what's due and what's coming up, alongside your clubs and events.</p></div>
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="5" y="1" width="6" height="1" fill="currentColor"/><rect x="3" y="2" width="2" height="1" fill="currentColor"/><rect x="5" y="2" width="6" height="1" fill="#F43F5E"/><rect x="11" y="2" width="2" height="1" fill="currentColor"/><rect x="2" y="3" width="1" height="1" fill="currentColor"/><rect x="3" y="3" width="2" height="1" fill="#F43F5E"/><rect x="5" y="3" width="6" height="1" fill="#FFFFFF"/><rect x="11" y="3" width="2" height="1" fill="#F43F5E"/><rect x="13" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="1" height="1" fill="currentColor"/><rect x="2" y="4" width="2" height="1" fill="#F43F5E"/><rect x="4" y="4" width="2" height="1" fill="#FFFFFF"/><rect x="6" y="4" width="4" height="1" fill="#F43F5E"/><rect x="10" y="4" width="2" height="1" fill="#FFFFFF"/><rect x="12" y="4" width="2" height="1" fill="#F43F5E"/><rect x="14" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="5" width="1" height="1" fill="currentColor"/><rect x="2" y="5" width="1" height="1" fill="#F43F5E"/><rect x="3" y="5" width="2" height="1" fill="#FFFFFF"/><rect x="5" y="5" width="6" height="1" fill="#F43F5E"/><rect x="11" y="5" width="2" height="1" fill="#FFFFFF"/><rect x="13" y="5" width="1" height="1" fill="#F43F5E"/><rect x="14" y="5" width="1" height="1" fill="currentColor"/><rect x="0" y="6" width="1" height="1" fill="currentColor"/><rect x="1" y="6" width="2" height="1" fill="#F43F5E"/><rect x="3" y="6" width="1" height="1" fill="#FFFFFF"/><rect x="4" y="6" width="2" height="1" fill="#F43F5E"/><rect x="6" y="6" width="4" height="1" fill="#FFFFFF"/><rect x="10" y="6" width="2" height="1" fill="#F43F5E"/><rect x="12" y="6" width="1" height="1" fill="#FFFFFF"/><rect x="13" y="6" width="2" height="1" fill="#F43F5E"/><rect x="15" y="6" width="1" height="1" fill="currentColor"/><rect x="0" y="7" width="1" height="1" fill="currentColor"/><rect x="1" y="7" width="2" height="1" fill="#F43F5E"/><rect x="3" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="4" y="7" width="1" height="1" fill="#F43F5E"/><rect x="5" y="7" width="2" height="1" fill="#FFFFFF"/><rect x="7" y="7" width="2" height="1" fill="#8B5CF6"/><rect x="9" y="7" width="2" height="1" fill="#FFFFFF"/><rect x="11" y="7" width="1" height="1" fill="#F43F5E"/><rect x="12" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="13" y="7" width="2" height="1" fill="#F43F5E"/><rect x="15" y="7" width="1" height="1" fill="currentColor"/><rect x="0" y="8" width="1" height="1" fill="currentColor"/><rect x="1" y="8" width="2" height="1" fill="#F43F5E"/><rect x="3" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="4" y="8" width="1" height="1" fill="#F43F5E"/><rect x="5" y="8" width="2" height="1" fill="#FFFFFF"/><rect x="7" y="8" width="2" height="1" fill="#8B5CF6"/><rect x="9" y="8" width="2" height="1" fill="#FFFFFF"/><rect x="11" y="8" width="1" height="1" fill="#F43F5E"/><rect x="12" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="13" y="8" width="2" height="1" fill="#F43F5E"/><rect x="15" y="8" width="1" height="1" fill="currentColor"/><rect x="0" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="9" width="2" height="1" fill="#F43F5E"/><rect x="3" y="9" width="1" height="1" fill="#FFFFFF"/><rect x="4" y="9" width="2" height="1" fill="#F43F5E"/><rect x="6" y="9" width="4" height="1" fill="#FFFFFF"/><rect x="10" y="9" width="2" height="1" fill="#F43F5E"/><rect x="12" y="9" width="1" height="1" fill="#FFFFFF"/><rect x="13" y="9" width="2" height="1" fill="#F43F5E"/><rect x="15" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="10" width="1" height="1" fill="currentColor"/><rect x="2" y="10" width="1" height="1" fill="#F43F5E"/><rect x="3" y="10" width="2" height="1" fill="#FFFFFF"/><rect x="5" y="10" width="6" height="1" fill="#F43F5E"/><rect x="11" y="10" width="2" height="1" fill="#FFFFFF"/><rect x="13" y="10" width="1" height="1" fill="#F43F5E"/><rect x="14" y="10" width="1" height="1" fill="currentColor"/><rect x="1" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="11" width="2" height="1" fill="#F43F5E"/><rect x="4" y="11" width="2" height="1" fill="#FFFFFF"/><rect x="6" y="11" width="4" height="1" fill="#F43F5E"/><rect x="10" y="11" width="2" height="1" fill="#FFFFFF"/><rect x="12" y="11" width="2" height="1" fill="#F43F5E"/><rect x="14" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="12" width="1" height="1" fill="currentColor"/><rect x="3" y="12" width="2" height="1" fill="#F43F5E"/><rect x="5" y="12" width="6" height="1" fill="#FFFFFF"/><rect x="11" y="12" width="2" height="1" fill="#F43F5E"/><rect x="13" y="12" width="1" height="1" fill="currentColor"/><rect x="3" y="13" width="2" height="1" fill="currentColor"/><rect x="5" y="13" width="6" height="1" fill="#F43F5E"/><rect x="11" y="13" width="2" height="1" fill="currentColor"/><rect x="5" y="14" width="6" height="1" fill="currentColor"/></svg></span><h3>Smart plan</h3><p>A priority list and daily schedule that tell you exactly what to work on first.</p></div>
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="0" y="2" width="6" height="1" fill="currentColor"/><rect x="0" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="3" width="4" height="1" fill="#8B5CF6"/><rect x="5" y="3" width="1" height="1" fill="currentColor"/><rect x="0" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="4" height="1" fill="#8B5CF6"/><rect x="5" y="4" width="1" height="1" fill="currentColor"/><rect x="0" y="5" width="6" height="1" fill="currentColor"/><rect x="5" y="6" width="6" height="1" fill="currentColor"/><rect x="5" y="7" width="1" height="1" fill="currentColor"/><rect x="6" y="7" width="4" height="1" fill="#F43F5E"/><rect x="10" y="7" width="1" height="1" fill="currentColor"/><rect x="5" y="8" width="1" height="1" fill="currentColor"/><rect x="6" y="8" width="4" height="1" fill="#F43F5E"/><rect x="10" y="8" width="1" height="1" fill="currentColor"/><rect x="5" y="9" width="6" height="1" fill="currentColor"/><rect x="10" y="10" width="6" height="1" fill="currentColor"/><rect x="10" y="11" width="1" height="1" fill="currentColor"/><rect x="11" y="11" width="4" height="1" fill="#22C55E"/><rect x="15" y="11" width="1" height="1" fill="currentColor"/><rect x="10" y="12" width="1" height="1" fill="currentColor"/><rect x="11" y="12" width="4" height="1" fill="#22C55E"/><rect x="15" y="12" width="1" height="1" fill="currentColor"/><rect x="10" y="13" width="6" height="1" fill="currentColor"/></svg></span><h3>Big tasks, split up</h3><p>Too much for one day? TaskNest spreads it across several days as "Part 1 of 3", and so on.</p></div>
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="1" y="1" width="14" height="1" fill="currentColor"/><rect x="1" y="2" width="1" height="1" fill="currentColor"/><rect x="2" y="2" width="12" height="1" fill="#FFFFFF"/><rect x="14" y="2" width="1" height="1" fill="currentColor"/><rect x="1" y="3" width="1" height="1" fill="currentColor"/><rect x="2" y="3" width="10" height="1" fill="#FFFFFF"/><rect x="12" y="3" width="2" height="1" fill="#22C55E"/><rect x="14" y="3" width="1" height="1" fill="currentColor"/><rect x="1" y="4" width="1" height="1" fill="currentColor"/><rect x="2" y="4" width="9" height="1" fill="#FFFFFF"/><rect x="11" y="4" width="3" height="1" fill="#22C55E"/><rect x="14" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="5" width="1" height="1" fill="currentColor"/><rect x="2" y="5" width="8" height="1" fill="#FFFFFF"/><rect x="10" y="5" width="3" height="1" fill="#22C55E"/><rect x="13" y="5" width="1" height="1" fill="#FFFFFF"/><rect x="14" y="5" width="1" height="1" fill="currentColor"/><rect x="1" y="6" width="1" height="1" fill="currentColor"/><rect x="2" y="6" width="7" height="1" fill="#FFFFFF"/><rect x="9" y="6" width="3" height="1" fill="#22C55E"/><rect x="12" y="6" width="2" height="1" fill="#FFFFFF"/><rect x="14" y="6" width="1" height="1" fill="currentColor"/><rect x="1" y="7" width="1" height="1" fill="currentColor"/><rect x="2" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="7" width="2" height="1" fill="#22C55E"/><rect x="5" y="7" width="3" height="1" fill="#FFFFFF"/><rect x="8" y="7" width="3" height="1" fill="#22C55E"/><rect x="11" y="7" width="3" height="1" fill="#FFFFFF"/><rect x="14" y="7" width="1" height="1" fill="currentColor"/><rect x="1" y="8" width="1" height="1" fill="currentColor"/><rect x="2" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="3" y="8" width="3" height="1" fill="#22C55E"/><rect x="6" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="7" y="8" width="3" height="1" fill="#22C55E"/><rect x="10" y="8" width="4" height="1" fill="#FFFFFF"/><rect x="14" y="8" width="1" height="1" fill="currentColor"/><rect x="1" y="9" width="1" height="1" fill="currentColor"/><rect x="2" y="9" width="2" height="1" fill="#FFFFFF"/><rect x="4" y="9" width="5" height="1" fill="#22C55E"/><rect x="9" y="9" width="5" height="1" fill="#FFFFFF"/><rect x="14" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="10" width="1" height="1" fill="currentColor"/><rect x="2" y="10" width="3" height="1" fill="#FFFFFF"/><rect x="5" y="10" width="3" height="1" fill="#22C55E"/><rect x="8" y="10" width="6" height="1" fill="#FFFFFF"/><rect x="14" y="10" width="1" height="1" fill="currentColor"/><rect x="1" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="11" width="4" height="1" fill="#FFFFFF"/><rect x="6" y="11" width="1" height="1" fill="#22C55E"/><rect x="7" y="11" width="7" height="1" fill="#FFFFFF"/><rect x="14" y="11" width="1" height="1" fill="currentColor"/><rect x="1" y="12" width="1" height="1" fill="currentColor"/><rect x="2" y="12" width="12" height="1" fill="#FFFFFF"/><rect x="14" y="12" width="1" height="1" fill="currentColor"/><rect x="1" y="13" width="14" height="1" fill="currentColor"/></svg></span><h3>Checklists &amp; notes</h3><p>Break assignments into steps, add sticky notes and pictures right on your board.</p></div>
+            <div class="landing-feature"><span class="landing-feature-icon"><svg class="pixel-icon" viewBox="0 0 16 16" width="40" height="40" aria-hidden="true"><rect x="4" y="2" width="8" height="1" fill="currentColor"/><rect x="2" y="3" width="2" height="1" fill="currentColor"/><rect x="4" y="3" width="8" height="1" fill="#E7C9A0"/><rect x="12" y="3" width="2" height="1" fill="currentColor"/><rect x="1" y="4" width="1" height="1" fill="currentColor"/><rect x="2" y="4" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="4" width="2" height="1" fill="#F43F5E"/><rect x="6" y="4" width="2" height="1" fill="#E7C9A0"/><rect x="8" y="4" width="2" height="1" fill="#FBBF24"/><rect x="10" y="4" width="5" height="1" fill="#E7C9A0"/><rect x="15" y="4" width="1" height="1" fill="currentColor"/><rect x="1" y="5" width="1" height="1" fill="currentColor"/><rect x="2" y="5" width="2" height="1" fill="#E7C9A0"/><rect x="4" y="5" width="2" height="1" fill="#F43F5E"/><rect x="6" y="5" width="2" height="1" fill="#E7C9A0"/><rect x="8" y="5" width="2" height="1" fill="#FBBF24"/><rect x="10" y="5" width="5" height="1" fill="#E7C9A0"/><rect x="15" y="5" width="1" height="1" fill="currentColor"/><rect x="0" y="6" width="1" height="1" fill="currentColor"/><rect x="1" y="6" width="13" height="1" fill="#E7C9A0"/><rect x="14" y="6" width="1" height="1" fill="currentColor"/><rect x="0" y="7" width="1" height="1" fill="currentColor"/><rect x="1" y="7" width="1" height="1" fill="#E7C9A0"/><rect x="2" y="7" width="2" height="1" fill="#60A5FA"/><rect x="4" y="7" width="6" height="1" fill="#E7C9A0"/><rect x="10" y="7" width="4" height="1" fill="currentColor"/><rect x="0" y="8" width="1" height="1" fill="currentColor"/><rect x="1" y="8" width="1" height="1" fill="#E7C9A0"/><rect x="2" y="8" width="2" height="1" fill="#60A5FA"/><rect x="4" y="8" width="5" height="1" fill="#E7C9A0"/><rect x="9" y="8" width="1" height="1" fill="currentColor"/><rect x="0" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="9" width="3" height="1" fill="#E7C9A0"/><rect x="4" y="9" width="2" height="1" fill="#22C55E"/><rect x="6" y="9" width="4" height="1" fill="#E7C9A0"/><rect x="10" y="9" width="1" height="1" fill="currentColor"/><rect x="1" y="10" width="1" height="1" fill="currentColor"/><rect x="2" y="10" width="3" height="1" fill="#E7C9A0"/><rect x="5" y="10" width="2" height="1" fill="#22C55E"/><rect x="7" y="10" width="4" height="1" fill="#E7C9A0"/><rect x="11" y="10" width="1" height="1" fill="currentColor"/><rect x="1" y="11" width="1" height="1" fill="currentColor"/><rect x="2" y="11" width="9" height="1" fill="#E7C9A0"/><rect x="11" y="11" width="2" height="1" fill="currentColor"/><rect x="2" y="12" width="11" height="1" fill="currentColor"/></svg></span><h3>Make it yours</h3><p>Pick colors, fonts and backgrounds — with light and dark mode built in.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Meet Midnight -->
+      <section class="landing-section landing-midnight">
+        <div class="landing-inner landing-midnight-inner">
+          <div id="landingMidnightScene" class="landing-midnight-scene"></div>
+          <div>
+            <p class="landing-eyebrow">Meet Midnight</p>
+            <h2 class="landing-h2">Your little study buddy</h2>
+            <p class="landing-lead">Midnight is TaskNest's pixel black cat. She lives on a shelf by her window on the sign-in screen, where she walks around, grooms her paws, lounges, and curls up for a nap. Her window even shows sunny, rainy, evening or night skies. Don't want a cat on your homework? You can switch her off in Settings.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Ready? -->
+      <section class="landing-section landing-cta">
+        <div class="landing-inner">
+          <h2 class="landing-h2">Ready to get organized?</h2>
+          <p class="landing-lead">It's free. Sign up with Google or your email and your tasks are saved to your account on every device.</p>
+          <button class="btn-get-started landing-cta-btn" data-open-login="signup">Create your free account</button>
+        </div>
+      </section>
+
+      <!-- 6. Footer: the legal pages live here -->
+      <footer class="site-footer">
+        <div class="site-footer-logo"><span class="logo-task">Task</span><span class="logo-nest">Nest</span></div>
+        <nav class="site-footer-links" aria-label="Legal and contact">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Use</a>
+          <a href="cookies.html">Cookies</a>
+          <a href="contact.html">Contact</a>
+        </nav>
+        <p class="site-footer-help">Need help? Email <a href="mailto:tasknesthelpdesk@gmail.com">tasknesthelpdesk@gmail.com</a></p>
+        <p class="site-footer-copy">© 2026 TaskNest</p>
+      </footer>
     </div>
 
     <div class="login-card hidden">
+      <button id="btnLoginBack" class="btn-login-back" aria-label="Back to the TaskNest home page">← Back</button>
       <div class="login-logo-icon" aria-hidden="true">
         <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" width="36" height="36">
           <polyline points="6,22 16,32 34,10" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -58,8 +207,24 @@
 
       <div id="loginEmailSection" class="hidden">
         <form id="loginForm" class="login-form">
-          <input type="email"    id="loginEmail"    placeholder="Email address" required />
-          <input type="password" id="loginPassword" placeholder="Password"      required />
+          <input type="email"    id="loginEmail"    placeholder="Email address" required autocomplete="email" />
+          <input type="password" id="loginPassword" placeholder="Password"      required autocomplete="current-password" />
+          <!-- password strength meter — only shown when creating an account -->
+          <div id="pwMeter" class="pw-meter hidden" aria-live="polite">
+            <div class="pw-meter-bar"><span></span><span></span><span></span></div>
+            <p class="pw-meter-text">At least 8 characters</p>
+          </div>
+          <!-- creating an account: both boxes must be ticked (Terms, Option A age rule) -->
+          <div id="signupChecks" class="signup-checks hidden">
+            <label class="signup-check">
+              <input type="checkbox" id="signupAge" />
+              <span>I'm at least 13 years old (16 if I live in the EU).</span>
+            </label>
+            <label class="signup-check">
+              <input type="checkbox" id="signupAgree" />
+              <span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Use</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+            </label>
+          </div>
           <button type="submit"  id="loginSubmitBtn" class="btn-login-submit">Sign In</button>
         </form>
         <button id="loginModeToggle" class="btn-mode-toggle" data-mode="signin">
@@ -70,7 +235,7 @@
       </div>
 
       <p id="loginError" class="login-error hidden"></p>
-      <p class="login-privacy">Your tasks are saved privately to your account via Firebase. We never share or sell your data.</p>
+      <p class="login-privacy">By continuing, including with Google, you agree to our <a href="terms.html" target="_blank" rel="noopener">Terms of Use</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, and confirm you're at least 13 (16 in the EU). We never share or sell your data.</p>
     </div>
   </div>
 
@@ -157,6 +322,7 @@
           <button class="profile-menu-item" id="ddOpenCustomize">🎨 Customize</button>
           <button class="profile-menu-item" id="ddOpenSettings">⚙️ Settings</button>
           <button class="profile-menu-item" id="ddOpenClasses">📋 Classes</button>
+          <button class="profile-menu-item" id="ddSuggest">💡 Suggest a feature</button>
 
           <div class="profile-divider"></div>
 
@@ -461,6 +627,62 @@
     </div>
   </div>
 
+  <!-- ── One-time notice for people who already had an account before the
+       Privacy Policy and Terms existed. A floating card (not part of the page
+       layout, so it can't push the board around). app.js decides who sees it. -->
+  <div id="legalNotice" class="legal-notice hidden" role="status">
+    <span class="legal-notice-icon" aria-hidden="true">📜</span>
+    <p>We've added a <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="terms.html" target="_blank" rel="noopener">Terms of Use</a>. Take a look!</p>
+    <button id="legalNoticeOk" class="legal-notice-btn">Got it</button>
+  </div>
+
+  <!-- ── Suggest a feature ──
+       Saved to the "suggestions" collection in Firestore. Anonymous unless
+       the person ticks the box. Nobody can read suggestions from the app;
+       the TaskNest team reads them in the Firebase Console. -->
+  <div class="modal-overlay hidden" id="suggestOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>💡 Suggest a feature</h3>
+        <button class="modal-close" id="closeSuggest" aria-label="Close">✕</button>
+      </div>
+      <form id="suggestForm" class="task-form">
+        <p class="modal-hint suggest-intro">What would make TaskNest better for you? Every idea gets read, and the good ones get built.</p>
+        <div class="form-group">
+          <label for="suggestKind">What kind of idea?</label>
+          <select id="suggestKind">
+            <option value="feature">A new feature</option>
+            <option value="improvement">Make something better</option>
+            <option value="bug">Something's broken</option>
+            <option value="other">Something else</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="suggestText">Your idea</label>
+          <textarea id="suggestText" rows="5" maxlength="1000" required
+            placeholder="e.g. It would be great if I could color-code tasks by how hard they are"></textarea>
+          <p class="suggest-count"><span id="suggestCount">0</span>/1000</p>
+        </div>
+        <!-- reply opt-in: one tidy box (checkbox + what it means) -->
+        <div class="suggest-optin">
+          <label class="suggest-email-opt">
+            <input type="checkbox" id="suggestIncludeEmail" />
+            <span class="suggest-optin-text">
+              <span class="suggest-optin-title">Include my email so TaskNest can reply</span>
+              <span class="suggest-email" id="suggestEmailShow"></span>
+            </span>
+          </label>
+          <p class="suggest-privacy">Leave this unticked to send your idea anonymously. Please don't put personal details in your idea. <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
+        </div>
+        <p id="suggestMsg" class="suggest-msg hidden" role="status"></p>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelSuggest">Cancel</button>
+          <button type="submit" class="btn-save" id="sendSuggest">Send idea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ── Add Event Modal ── -->
   <div class="modal-overlay hidden" id="eventOverlay">
     <div class="modal modal-sm">
@@ -656,6 +878,19 @@
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
         <span>Show Midnight on the sign-in screen</span>
       </label>
+      <!-- Separate switch on purpose: wanting the sign-in room is not the same
+           as wanting a cat wandering over your board. -->
+      <!-- Roaming is paused (hidden) until we decide how she should live in
+           the app. Remove the "hidden" classes here and MIDNIGHT_ROAM_READY in
+           app.js to bring it back. -->
+      <label class="toggle-switch midnight-onoff hidden">
+        <input type="checkbox" id="midnightRoam" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span>Let her roam the app</span>
+      </label>
+      <p class="modal-hint hidden">She walks the empty parts of your board, calendar and
+        plan, going around anything you’re reading. She can never get in the way
+        of a tap or a drag.</p>
       <p class="modal-hint">“Auto” follows the time of day. The rest stay put.</p>
       <div id="midnightSettingsScene" class="midnight-scene"></div>
       <div class="form-actions">
@@ -751,6 +986,6 @@
 
   <!-- ?v= busts stale browser caches on deploy — bump it (here and on the
        midnight.js import inside app.js) whenever the scripts change. -->
-  <script type="module" src="app.js?v=midnight12"></script>
+  <script type="module" src="app.js?v=landing12"></script>
 </body>
 </html>

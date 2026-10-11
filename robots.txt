@@ -1,2 +1,8 @@
+# TaskNest is open to search engines (changed 2026-10-12).
+# Google can only ever see the public pages (the entry page and the legal
+# pages). Everyone's boards are behind the login and locked by the database
+# rules, so they can't be searched.
 User-agent: *
-Disallow: /
+Allow: /
+
+Sitemap: https://homework-tracker-ashy.vercel.app/sitemap.xml

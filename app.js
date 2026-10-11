@@ -6,12 +6,15 @@ import { getAuth, onAuthStateChanged, signOut, updateProfile,
          signInWithEmailAndPassword,
          createUserWithEmailAndPassword,
          sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc,
+         collection, addDoc, serverTimestamp }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 // ── Midnight, the pixel-cat on the sign-in screen ─────────
 import { mountMidnight, midnightOn, setMidnightOn, onMidnightChange,
-         midnightPrefs, midnightAdopt } from './midnight.js?v=midnight12';
+         midnightPrefs, midnightAdopt, mountMidnightRoam,
+         midnightRoamOn, setMidnightRoamOn,
+         buildPoseSvg, poseLounge, poseSleep } from './midnight.js?v=midnight13';
 
 const firebaseConfig = {
   apiKey:            'AIzaSyDgU4B_06t6V6x6bBnfSvKTGSnNDgTMQo8',
@@ -70,7 +73,9 @@ let columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
 let subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));
 let tasks    = [];
 let events   = [];
-let theme    = localStorage.getItem('hw-theme') || 'light';
+// Your saved choice, or — until you pick one — whatever your computer uses
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+let theme    = localStorage.getItem('hw-theme') || (systemDark.matches ? 'dark' : 'light');
 
 let activeView  = 'board';
 let planSubView = 'ranked';   // 'ranked' | 'schedule' | 'stats'
@@ -200,13 +205,19 @@ function escHtml(s) {
 }
 
 // ── Theme ─────────────────────────────────────────────────
-function applyTheme(t) {
+// save=false just shows the theme without remembering it as YOUR choice,
+// so people who never pick one keep following their computer.
+function applyTheme(t, save = true) {
   theme = t;
   document.documentElement.setAttribute('data-theme', t);
   document.getElementById('themeToggle').textContent = t === 'dark' ? '☀️' : '🌙';
-  localStorage.setItem('hw-theme', t);
+  if (save) localStorage.setItem('hw-theme', t);
 }
 document.getElementById('themeToggle').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
+// computer switches light/dark (e.g. at sunset) → follow it, unless you've picked
+systemDark.addEventListener('change', e => {
+  if (!localStorage.getItem('hw-theme')) applyTheme(e.matches ? 'dark' : 'light', false);
+});
 
 // ── Profile Menu ──────────────────────────────────────────
 function getInitials(name) {
@@ -245,7 +256,8 @@ function renderProfileGreeting() {
   const el = document.getElementById('profileGreeting');
   if (!el) return;
   const remaining = tasks.filter(t => !t.done).length;
-  const name = currentUser?.displayName?.split(' ')[0] || 'there';
+  // the name is typed by the person (rename), so escape it before it goes into HTML
+  const name = escHtml(currentUser?.displayName?.split(' ')[0] || 'there');
   const taskWord = remaining === 1 ? 'task' : 'tasks';
   el.innerHTML = remaining > 0
     ? `👋 Hello <strong>${name}</strong>! You have <strong>${remaining} ${taskWord}</strong> left to complete.`
@@ -284,6 +296,66 @@ document.getElementById('ddOpenCustomize').addEventListener('click', () => {
   document.getElementById('openCustomize').click();
   closeProfileDropdown();
 });
+// ── Suggest a feature ──
+// Goes to the top-level "suggestions" collection, NOT under users/{uid}, so a
+// suggestion really is anonymous unless the person ticks "include my email".
+// firestore.rules lets signed-in people add one but nobody read them back.
+const suggestOverlay = document.getElementById('suggestOverlay');
+const suggestText    = document.getElementById('suggestText');
+const suggestMsg     = document.getElementById('suggestMsg');
+const SUGGEST_GAP_MS = 60 * 1000;        // one idea a minute — stops accidental double-sends and spam
+function openSuggest() {
+  closeProfileDropdown();
+  document.getElementById('suggestForm').reset();
+  document.getElementById('suggestCount').textContent = '0';
+  document.getElementById('suggestEmailShow').textContent = currentUser?.email || '';
+  suggestMsg.classList.add('hidden');
+  document.getElementById('sendSuggest').disabled = false;
+  suggestOverlay.classList.remove('hidden');
+  suggestText.focus();
+}
+function closeSuggest() { suggestOverlay.classList.add('hidden'); }
+function showSuggestMsg(text, ok) {
+  suggestMsg.textContent = text;
+  suggestMsg.classList.toggle('ok', ok);
+  suggestMsg.classList.remove('hidden');
+}
+document.getElementById('ddSuggest').addEventListener('click', openSuggest);
+document.getElementById('closeSuggest').addEventListener('click', closeSuggest);
+document.getElementById('cancelSuggest').addEventListener('click', closeSuggest);
+suggestOverlay.addEventListener('click', e => { if (e.target === suggestOverlay) closeSuggest(); });
+suggestText.addEventListener('input', () => {
+  document.getElementById('suggestCount').textContent = suggestText.value.length;
+});
+document.getElementById('suggestForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = suggestText.value.trim();
+  if (!currentUser) return showSuggestMsg('Sign in to send a suggestion.', false);
+  if (!text) return showSuggestMsg('Write your idea first.', false);
+  const last = Number(localStorage.getItem('hw-lastSuggest') || 0);
+  if (Date.now() - last < SUGGEST_GAP_MS) return showSuggestMsg('Thanks! Give it a minute before sending another idea.', false);
+
+  const idea = {
+    kind: document.getElementById('suggestKind').value,
+    text,
+    createdAt: serverTimestamp(),
+  };
+  if (document.getElementById('suggestIncludeEmail').checked && currentUser.email) idea.email = currentUser.email;
+
+  const btn = document.getElementById('sendSuggest');
+  btn.disabled = true;
+  try {
+    await withTimeout(addDoc(collection(db, 'suggestions'), idea), 15000);
+    localStorage.setItem('hw-lastSuggest', String(Date.now()));
+    showSuggestMsg('Thank you! Your idea was sent. 💜', true);
+    setTimeout(closeSuggest, 1800);
+  } catch (err) {
+    console.error('Suggestion failed:', err);
+    showSuggestMsg("Couldn't send your idea right now. Please try again later.", false);
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('ddOpenSettings').addEventListener('click', () => {
   document.getElementById('openSettings').click();
   closeProfileDropdown();
@@ -413,7 +485,7 @@ function renderStatusLine() {
   }
 
   el.innerHTML =
-    `<span class="status-item">${greetingText}</span>` +
+    `<span class="status-item">${escHtml(greetingText)}</span>` +
     `<span class="status-dot"></span>` +
     `<span class="status-item${urgent ? ' status-urgent' : ''}">${msg}</span>`;
 }
@@ -429,6 +501,8 @@ function showView(v) {
   if (v === 'board')    renderBoard();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     renderPlan();
+  // she has to re-learn the page after the new view has painted
+  midnightRelayout();
 }
 document.getElementById('btnBoard').addEventListener('click',    () => showView('board'));
 document.getElementById('btnCalendar').addEventListener('click', () => showView('calendar'));
@@ -459,6 +533,8 @@ function applyCanvasTransform() {
   if (canvas) canvas.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px) scale(${canvasZoom})`;
   const label = document.getElementById('canvasZoomLabel');
   if (label) label.textContent = Math.round(canvasZoom * 100) + '%';
+  // panning or zooming moves every column, so her map is now stale
+  if (typeof midnightRelayout === 'function') midnightRelayout();
 }
 
 function saveCanvasState() {
@@ -1143,6 +1219,15 @@ function renderCanvasTables() {
 // ──────────────────────────────────────────────────────────
 // CANVAS IMAGES
 // ──────────────────────────────────────────────────────────
+// Remove a picture's file from Firebase Storage, not just from the board.
+// A download link works as a pointer to the file. If it fails (offline, or
+// the file is already gone) the board still updates; we just log it.
+async function deleteStoredImage(url) {
+  if (!url) return;
+  try { await deleteObject(storageRef(storage, url)); }
+  catch (err) { if (err.code !== 'storage/object-not-found') console.warn('Could not delete picture file:', err); }
+}
+
 function renderCanvasImages() {
   document.querySelectorAll('#boardColumns .canvas-image').forEach(el => el.remove());
   const container = document.getElementById('boardColumns');
@@ -1170,6 +1255,7 @@ function renderCanvasImages() {
       e.stopPropagation();
       canvasImages = canvasImages.filter(i => i.id !== img.id);
       saveCanvasImages();
+      deleteStoredImage(img.url);     // empty the "trash" too, not just the board
       el.remove();
     });
 
@@ -2116,6 +2202,8 @@ function handleCheck(id) {
   }
   saveTasks(); renderBoard();
   if (activeView === 'plan') renderPlan();
+  if (t.done) midnightNoticedTick();   // she looks up when you finish something
+  midnightRelayout();                  // the card moved, so her map changed
 }
 
 function deleteTask(id) {
@@ -3872,10 +3960,32 @@ function mergeSubjects(raw) {
   });
 }
 
+// ── One-time "we've added a Privacy Policy and Terms" notice ──
+// Shown once per ACCOUNT (remembered in their user doc, so it doesn't come
+// back on their phone after they dismiss it on their laptop). Brand-new
+// accounts skip it: they just agreed to both while signing up.
+const LEGAL_NOTICE_ID = 'legal-2026-10';
+let userNotices = {};
+function maybeShowLegalNotice() {
+  if (!currentUser || userNotices[LEGAL_NOTICE_ID]) return;
+  const { creationTime, lastSignInTime } = currentUser.metadata || {};
+  const brandNew = creationTime && lastSignInTime &&
+    Math.abs(Date.parse(lastSignInTime) - Date.parse(creationTime)) < 2 * 60 * 1000;
+  if (brandNew) { dismissLegalNotice(); return; }
+  document.getElementById('legalNotice').classList.remove('hidden');
+}
+function dismissLegalNotice() {
+  document.getElementById('legalNotice').classList.add('hidden');
+  userNotices[LEGAL_NOTICE_ID] = true;
+  if (currentUser) setDoc(userDocRef(), { notices: { [LEGAL_NOTICE_ID]: true } }, { merge: true }).catch(() => {});
+}
+document.getElementById('legalNoticeOk').addEventListener('click', dismissLegalNotice);
+
 async function loadUserData() {
   const ref  = doc(db, 'users', currentUser.uid);
   const snap = await getDoc(ref);
   const d = snap.exists() ? snap.data() : {};
+  userNotices = d.notices || {};   // one-time notices this account has already dismissed
 
   // Load settings (user-level)
   if (d.settings) localStorage.setItem('hw-settings', JSON.stringify(d.settings));
@@ -3969,7 +4079,7 @@ function initApp() {
   if (appSetupDone) return;
   appSetupDone = true;
   applyStyle();
-  applyTheme(theme);
+  applyTheme(theme, !!localStorage.getItem('hw-theme'));
   renderProfileInfo();
   initCanvasInteractions();
   initToolbar();
@@ -4132,6 +4242,7 @@ function showHomeScreen() {
   playEntrance(homeViewEl, 'home-entering', 380);   // home screen eases back in
   renderHomeGreeting();
   renderHomeScreen();
+  midnightRelayout();      // no cat on the boards picker
 }
 
 function renderHomeScreen() {
@@ -4179,6 +4290,12 @@ function renderHomeScreen() {
       }
       if (!confirm(`Delete "${board.name}"? All tasks and notes on this board will be gone forever.`)) return;
       boardsMeta = boardsMeta.filter(b => b.id !== board.id);
+      // its pictures live in Storage, separately from the board — delete those too
+      try {
+        const snap = await getDoc(boardDocRef(board.id));
+        const imgs = snap.exists() ? (snap.data().canvasImages || []) : [];
+        await Promise.all(imgs.map(i => deleteStoredImage(i.url)));
+      } catch (_) {}
       try { await deleteDoc(boardDocRef(board.id)); } catch(_) {}
       await saveBoardsMeta();
       renderHomeScreen();
@@ -4324,9 +4441,116 @@ function applyMidnightVisibility() {
       mode: 'full',                   // her room IS the page, not a picture on it
       onPhase: p => { loginOverlay.dataset.phase = p; }
     });                               // no-ops if it's already built
+    // and a second, boxed copy of her for the entry page's "Meet Midnight"
+    mountMidnight(document.getElementById('landingMidnightScene'), {});
   }
 }
 applyMidnightVisibility();
+
+/* ══ Midnight roaming the app ═══════════════════════════════
+   Inside the app she isn't a background — she's a cat on the page, walking
+   the empty parts of it and going around whatever you're reading.
+
+   What counts as "solid" is chosen per view, on purpose. On the board the
+   columns ARE the content, so she goes round them. On the calendar the panel
+   is just a container that fills the whole window — treat that as solid and
+   she'd have nowhere at all to stand — so instead only the days that actually
+   have homework in them are walls, and she pads across the empty ones. */
+const ROAM_VIEWS = ['board', 'calendar', 'plan'];
+let midnightRoamer = null;
+
+// always solid, on every view: the app's own furniture
+const ROAM_ALWAYS = '.header, .status-line, .canvas-controls';
+
+function roamObstacles() {
+  const rects = [];
+  const push = el => { if (el) { const r = el.getBoundingClientRect();
+                                 if (r.width > 0 && r.height > 0) rects.push(r); } };
+  document.querySelectorAll(ROAM_ALWAYS).forEach(push);
+
+  if (activeView === 'board') {
+    document.querySelectorAll(
+      '#boardView .board-column, #boardView .sticky-note, #boardView .canvas-table,' +
+      '#boardView .canvas-image, #boardView .board-empty-state').forEach(push);
+
+  } else if (activeView === 'calendar') {
+    // the frame around the grid, but NOT the big panel itself
+    document.querySelectorAll(
+      '#calendarView .cal-top, #calendarView .cal-weekdays,' +
+      '#calendarView .cal-sidebar').forEach(push);
+    // …and only the days with something on them. Collected via the markers
+    // themselves rather than :has(), which is newer than this app supports.
+    const busy = new Set();
+    document.querySelectorAll('#calendarView .day-chip, #calendarView .day-dot')
+      .forEach(el => { const d = el.closest('.cal-day'); if (d) busy.add(d); });
+    busy.forEach(push);
+
+  } else if (activeView === 'plan') {
+    document.querySelectorAll(
+      '#planView .plan-top, #planView .priority-card, #planView .plan-empty').forEach(push);
+  }
+  return rects;
+}
+
+/* How her homework is going, which tips her mood (but never nags). */
+function roamMood() {
+  const withDue    = tasks.filter(t => t.due);
+  const incomplete = withDue.filter(t => !t.done);
+  if (tasks.length && !incomplete.length) return 'alldone';
+  if (incomplete.filter(t => daysUntil(t.due) < 0).length >= 4) return 'busy';
+  return 'normal';
+}
+
+// Paused: Midnight stays out of the boards until we've decided how she should
+// live in there. Flip to true (and un-hide the Settings switch) to bring her back.
+const MIDNIGHT_ROAM_READY = false;
+
+function applyMidnightRoam() {
+  const signedIn = !mainApp.classList.contains('hidden');
+  const wanted   = MIDNIGHT_ROAM_READY && midnightOn() && midnightRoamOn();
+
+  // switched off, or signed out — take her down completely and stop her timers
+  if (!wanted || !signedIn) {
+    if (midnightRoamer) { midnightRoamer.stop(); midnightRoamer.stage.remove();
+                          delete document.body.dataset.midnightRoam; midnightRoamer = null; }
+    return;
+  }
+  if (!midnightRoamer) {
+    midnightRoamer = mountMidnightRoam(document.body, {
+      getObstacles: roamObstacles,
+      size: 60                       // her sign-in pace is tied to this width
+    });
+  }
+  if (!midnightRoamer) return;
+
+  /* Ask the page what's actually on screen rather than trusting activeView:
+     showHomeScreen() un-hides the boards picker WITHOUT changing activeView,
+     so going by activeView alone would let her wander the home screen — which
+     is the one place inside the app we agreed to keep cat-free. Hide rather
+     than tear down, so hopping between views doesn't rebuild her every time. */
+  const viewEl = document.getElementById(activeView + 'View');
+  const homeUp = !document.getElementById('homeView').classList.contains('hidden');
+  const show = ROAM_VIEWS.includes(activeView) && !homeUp
+            && viewEl && !viewEl.classList.contains('hidden');
+  midnightRoamer.stage.style.display = show ? '' : 'none';
+  if (show) { midnightRoamer.setMood(roamMood()); midnightRoamer.rebuild(); }
+}
+
+/* The page moves under her constantly — view switches, re-renders, panning and
+   zooming the board canvas, resizing the window. Re-read the layout after it
+   settles rather than on every single event. */
+let roamSettle = 0;
+function midnightRelayout() {
+  clearTimeout(roamSettle);
+  roamSettle = setTimeout(applyMidnightRoam, 180);
+}
+addEventListener('resize', midnightRelayout);
+addEventListener('scroll', midnightRelayout, true);
+
+/* she notices you ticking something off */
+function midnightNoticedTick() {
+  if (midnightRoamer) { midnightRoamer.setMood(roamMood()); midnightRoamer.perkUp(); }
+}
 
 // ── Midnight's preferences follow the account ──
 // localStorage stays the working copy (the sign-in screen has to draw her
@@ -4335,6 +4559,7 @@ applyMidnightVisibility();
 let midnightRestoring = false;
 onMidnightChange(() => {
   applyMidnightVisibility();
+  applyMidnightRoam();
   if (midnightRestoring || !currentUser) return;   // don't echo the restore straight back
   setDoc(userDocRef(), { midnight: midnightPrefs() }, { merge: true });
 });
@@ -4352,11 +4577,15 @@ function openMidnightPanel() {
   mountMidnight(document.getElementById('midnightSettingsScene'), { picker: true });
   const box = document.getElementById('midnightEnabled');
   box.checked = midnightOn();
+  document.getElementById('midnightRoam').checked = midnightRoamOn();
   midnightOverlay.classList.toggle('midnight-off', !box.checked);
 }
 document.getElementById('midnightEnabled').addEventListener('change', e => {
   setMidnightOn(e.target.checked);          // applyMidnightVisibility runs via the watcher
   midnightOverlay.classList.toggle('midnight-off', !e.target.checked);
+});
+document.getElementById('midnightRoam').addEventListener('change', e => {
+  setMidnightRoamOn(e.target.checked);       // applyMidnightRoam runs via the watcher
 });
 function closeMidnightPanel() { midnightOverlay.classList.add('hidden'); }
 document.getElementById('openMidnightSettings').addEventListener('click', openMidnightPanel);
@@ -4366,17 +4595,119 @@ midnightOverlay.addEventListener('click', e => {
   if (e.target === midnightOverlay) closeMidnightPanel();
 });
 
-// Welcome screen → smoothly fade into the sign-in card
-document.getElementById('btnGetStarted').addEventListener('click', () => {
-  welcomeScreen.classList.add('leaving');       // drift up + fade out
+// Sign in ↔ Create account. Used by the toggle under the email form and by
+// the entry page's "Create your free account" buttons.
+function setLoginMode(mode) {
+  const isSignUp = mode === 'signup';
+  const btn = document.getElementById('loginModeToggle');
+  btn.dataset.mode = isSignUp ? 'signup' : 'signin';
+  btn.textContent  = isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Create one";
+  document.getElementById('loginSubmitBtn').textContent = isSignUp ? 'Create Account' : 'Sign In';
+  // lets password managers offer to make up a strong new password
+  document.getElementById('loginPassword').autocomplete = isSignUp ? 'new-password' : 'current-password';
+  updatePwMeter();
+  document.getElementById('signupChecks').classList.toggle('hidden', !isSignUp);
+  document.querySelector('.login-subtitle').textContent = isSignUp
+    ? 'Create your free account to save your tasks across all your devices.'
+    : 'Sign in to save your tasks across all your devices.';
+  clearLoginError();
+}
+
+// ── Password strength meter (only when creating an account) ──
+// Length matters most (that's what security experts recommend now), with a
+// bonus for mixing letters, numbers and symbols, and a veto for passwords
+// everyone guesses first.
+const COMMON_PASSWORDS = ['password', '12345678', '123456789', '1234567890', 'qwertyui',
+  'qwerty123', 'iloveyou', 'password1', 'abc12345', '11111111', 'tasknest', 'homework'];
+function passwordStrength(pw) {
+  if (pw.length < 8) return { level: 0, text: `At least 8 characters (${pw.length}/8)` };
+  const kinds = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter(r => r.test(pw)).length;
+  const lower = pw.toLowerCase();
+  if (COMMON_PASSWORDS.some(c => lower.includes(c)) || /^(.)\1+$/.test(pw))
+    return { level: 1, text: 'Weak: that one is too easy to guess' };
+  if (pw.length >= 14 || (pw.length >= 11 && kinds >= 3)) return { level: 3, text: 'Strong' };
+  if (pw.length >= 10 || kinds >= 3) return { level: 2, text: 'Okay. A little longer makes it strong' };
+  return { level: 1, text: 'Weak. Try making it longer' };
+}
+const pwInput = document.getElementById('loginPassword');
+const pwMeter = document.getElementById('pwMeter');
+function updatePwMeter() {
+  const isSignUp = document.getElementById('loginModeToggle').dataset.mode === 'signup';
+  pwMeter.classList.toggle('hidden', !isSignUp);
+  if (!isSignUp) return;
+  const { level, text } = passwordStrength(pwInput.value);
+  pwMeter.dataset.level = level;
+  pwMeter.querySelector('.pw-meter-text').textContent = text;
+}
+pwInput.addEventListener('input', updatePwMeter);
+
+// Entry page → smoothly fade into the sign-in card.
+// "signup" also opens the email form, ready to create an account.
+function openLoginCard(mode) {
+  setLoginMode(mode);
+  if (mode === 'signup') loginEmailSec.classList.remove('hidden');
+  welcomeScreen.classList.add('leaving');       // fade out
   setTimeout(() => {
     welcomeScreen.classList.add('hidden');
     welcomeScreen.classList.remove('leaving');
+    loginOverlay.classList.remove('landing-mode');
+    loginOverlay.scrollTop = 0;
     loginCard.classList.remove('hidden');
     loginCard.classList.add('entering');        // fade the sign-in card in
     setTimeout(() => loginCard.classList.remove('entering'), 450);
   }, 320);                                       // matches the 0.32s fade-out
+}
+
+// …and back again, to the top of the entry page
+function showLanding() {
+  loginCard.classList.add('hidden');
+  loginOverlay.classList.add('landing-mode');
+  welcomeScreen.classList.remove('hidden');
+  loginOverlay.scrollTop = 0;
+}
+
+document.querySelectorAll('[data-open-login]').forEach(btn =>
+  btn.addEventListener('click', () => openLoginCard(btn.dataset.openLogin)));
+document.getElementById('btnLoginBack').addEventListener('click', showLanding);
+
+// The logo in the entry page's top bar just scrolls back to the top
+document.querySelector('.landing-bar-logo').addEventListener('click', e => {
+  e.preventDefault();
+  loginOverlay.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+// Midnight lying along the top of the "Create your free account" button. She
+// lounges, and every so often curls up for a nap. Only if she's switched on; with
+// reduced motion she just sits.
+let buttonCatTimer = null;
+function applyButtonCat() {
+  const spot = document.getElementById('buttonCat');
+  clearTimeout(buttonCatTimer);
+  spot.replaceChildren();
+  if (!midnightOn()) return;
+  const poses = [poseLounge, poseSleep].map(fn => {
+    const svg = buildPoseSvg(fn);
+    svg.setAttribute('class', 'button-cat-pose');
+    spot.appendChild(svg);
+    return svg;
+  });
+  const show = i => poses.forEach((p, j) => p.classList.toggle('on', i === j));
+  show(0);
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // mostly lounging, with the odd nap
+  const next = () => {
+    const i = Math.random() < 0.7 ? 0 : 1;
+    show(i);
+    buttonCatTimer = setTimeout(next, i === 1 ? 9000 : 5000 + Math.random() * 4000);
+  };
+  buttonCatTimer = setTimeout(next, 5000);
+}
+applyButtonCat();
+onMidnightChange(applyButtonCat);
+
+// Loading skeleton: "page" while we wait to hear who you are, "board" while a
+// signed-in person's boards load. Call doneBooting() once there's a real screen.
+function doneBooting() { document.body.classList.remove('booting'); }
 
 function showLoginError(msg) {
   loginError.textContent = msg;
@@ -4414,6 +4745,18 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   const email    = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   const isSignUp = document.getElementById('loginModeToggle').dataset.mode === 'signup';
+  if (isSignUp && password.length < 8) {
+    showLoginError('Your password needs at least 8 characters.');
+    return;
+  }
+  if (isSignUp && !document.getElementById('signupAge').checked) {
+    showLoginError("Please confirm you're old enough to use TaskNest.");
+    return;
+  }
+  if (isSignUp && !document.getElementById('signupAgree').checked) {
+    showLoginError('Please agree to the Terms of Use and Privacy Policy to create an account.');
+    return;
+  }
   try {
     if (isSignUp) {
       await createUserWithEmailAndPassword(auth, email, password);
@@ -4425,7 +4768,8 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
       'auth/user-not-found':   'No account found with that email.',
       'auth/wrong-password':   'Wrong password. Try again.',
       'auth/email-already-in-use': 'That email is already registered. Sign in instead.',
-      'auth/weak-password':    'Password must be at least 6 characters.',
+      'auth/weak-password':    'Your password needs at least 8 characters.',
+      'auth/too-many-requests': 'Too many tries. Wait a few minutes, then try again.',
       'auth/invalid-email':    'Please enter a valid email address.',
       'auth/invalid-credential': 'Wrong email or password.',
     };
@@ -4447,12 +4791,7 @@ document.getElementById('btnForgotPassword').addEventListener('click', async () 
 });
 
 document.getElementById('loginModeToggle').addEventListener('click', e => {
-  const btn     = e.currentTarget;
-  const isSignUp = btn.dataset.mode !== 'signup';
-  btn.dataset.mode = isSignUp ? 'signup' : 'signin';
-  btn.textContent  = isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Create one";
-  document.getElementById('loginSubmitBtn').textContent = isSignUp ? 'Create Account' : 'Sign In';
-  clearLoginError();
+  setLoginMode(e.currentTarget.dataset.mode === 'signup' ? 'signin' : 'signup');
 });
 
 // Reject if a promise takes too long, so the UI never hangs forever.
@@ -4467,6 +4806,7 @@ function withTimeout(promise, ms) {
 onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
+    document.body.dataset.boot = 'board';   // skeleton turns board-shaped while we load
     try {
       await withTimeout(loadUserData(), 20000);  // loads boardsMeta (migrates if needed)
     } catch (err) {
@@ -4479,6 +4819,7 @@ onAuthStateChanged(auth, async user => {
     }
     loginOverlay.classList.add('hidden');
     mainApp.classList.remove('hidden');
+    doneBooting();
     playEntrance(mainApp, 'app-entering', 500);   // gently fade the app in
     initApp();                          // one-time canvas/toolbar setup (guarded)
 
@@ -4492,16 +4833,20 @@ onAuthStateChanged(auth, async user => {
     } else {
       showHomeScreen();
     }
+    midnightRelayout();                 // she can come out now the app is up
+    maybeShowLegalNotice();
   } else {
     currentUser = null;
     currentBoardId = null;
     boardsMeta = [];
     appSetupDone = false;
     mainApp.classList.add('hidden');
+    document.getElementById('legalNotice').classList.add('hidden');
+    applyMidnightRoam();                // signed out — she goes back to her room
     loginOverlay.classList.remove('hidden');
-    // Show the welcome screen first again (hide the sign-in card)
-    welcomeScreen.classList.remove('hidden');
-    loginCard.classList.add('hidden');
+    // Show the entry page first again (hide the sign-in card)
+    showLanding();
+    doneBooting();
     // Reset state so next user starts fresh
     columns  = DEFAULT_COLUMNS.map(c => ({ ...c }));
     subjects = DEFAULT_SUBJECTS.map(s => ({ ...s }));

@@ -15,6 +15,13 @@ A personal homework and study planner built as a web app. Organizes assignments 
 - **Customize** — change the background, font, title, and icon to make it your own
 - **Dark mode** — toggle between light and dark
 - **Developer Mode** — log how long tasks actually took and see accuracy stats per class
+- **Entry page** — a friendly scrolling page that explains TaskNest before you sign in, with Midnight the pixel cat at the top
+- **Loading skeleton** — soft grey placeholder shapes while TaskNest checks if you're signed in, so the screen never flashes the wrong page
+- **Privacy Policy, Terms of Use, Cookies & Contact pages** — written in plain, friendly language, each with a "quick version" at the top
+- **Safer sign-up** — 8+ character passwords with a weak / okay / strong meter, plus age and Terms checkboxes
+- **Suggest a feature** — signed-in users can send ideas straight from the profile menu (anonymous unless they choose to include their email)
+- **Matches your computer's theme** — light or dark automatically, until you pick one yourself
+- **Need help?** Email tasknesthelpdesk@gmail.com
 
 ---
 

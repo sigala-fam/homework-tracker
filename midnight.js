@@ -123,6 +123,19 @@ export function setMidnightOn(on){
   announceLook();
 }
 
+/* ── …and whether she wanders the app itself, not just the sign-in screen ──
+   Deliberately a SECOND switch. Turning her off entirely is a bigger decision
+   than deciding you don't want a cat walking over your homework, and plenty of
+   people will want the sign-in room without the roaming. */
+const ROAM_STORE = 'hw-midnight-roam';
+export function midnightRoamOn(){
+  try { return localStorage.getItem(ROAM_STORE) !== '0'; } catch (e) { return true; }
+}
+export function setMidnightRoamOn(on){
+  try { localStorage.setItem(ROAM_STORE, on ? '1' : '0'); } catch (e) {}
+  announceLook();
+}
+
 /* Every mounted scene subscribes here, so picking a look in Settings also
    updates the sign-in scene sitting behind the app. */
 const watchers = new Set();
@@ -135,7 +148,9 @@ export function onMidnightChange(fn){ watchers.add(fn); return () => watchers.de
    her before anyone is logged in. app.js mirrors these into the user's
    Firestore doc and calls midnightAdopt() after login to pull them back down. */
 export function midnightLook(){ return savedLook(); }
-export function midnightPrefs(){ return { look: savedLook(), on: midnightOn() }; }
+export function midnightPrefs(){
+  return { look: savedLook(), on: midnightOn(), roam: midnightRoamOn() };
+}
 export function midnightAdopt(prefs){
   if (!prefs) return false;
   let changed = false;
@@ -144,6 +159,11 @@ export function midnightAdopt(prefs){
   }
   if (typeof prefs.on === 'boolean' && prefs.on !== midnightOn()) {
     try { localStorage.setItem(ON_STORE, prefs.on ? '1' : '0'); } catch (e) {}
+    changed = true;
+  }
+  // absent on accounts saved before roaming existed — leave the local default alone
+  if (typeof prefs.roam === 'boolean' && prefs.roam !== midnightRoamOn()) {
+    try { localStorage.setItem(ROAM_STORE, prefs.roam ? '1' : '0'); } catch (e) {}
     changed = true;
   }
   if (changed) announceLook();
@@ -810,6 +830,308 @@ export function initMidnightBrain(cat,opts){
            setRange(lo,hi){ MIN=lo; MAX=hi; x=Math.min(Math.max(x,lo),hi); place(); } };
 }
 
+/* ═══════════ 7b · roaming the app itself ═══════════
+   On the sign-in screen she walks a ledge: one dimension, nothing in her way.
+   Inside the app she has to share the page with things you're reading and
+   dragging, so she needs to go AROUND them.
+
+   How it works, in plain words:
+     1. Ask the page where every card, note and column is.
+     2. Lay an invisible grid over the window and cross out every square her
+        body wouldn't fit in.
+     3. Pick a random square she CAN fit in and find the shortest route there
+        that only uses free squares.
+     4. Straighten the route out, then walk it at a steady pace.
+
+   Two rules this must never break:
+     · her stage is pointer-events:none, so she can never eat a click or a drag
+     · her pace is measured in her OWN body-widths per second, so the leg
+       animation stays in step no matter her size or direction of travel      */
+
+const ROAM_CELL = 18;        // grid square, in pixels
+const ROAM_PAD  = 6;         // breathing room left around each obstacle
+/* On the sign-in screen she is 15.33% of the scene wide and travels 15%/sec,
+   which is 0.978 of her own body-width per second against a 0.50s leg cycle.
+   Keep this ratio and she can never moonwalk. */
+export const ROAM_SPEED_BW = 0.978;   // body-widths per second
+export const ROAM_STRIDE   = 0.489;   // body-widths advanced per leg cycle
+
+export function initMidnightRoam(cat, opts){
+  opts = opts || {};
+  const stage = cat.parentElement;
+  const getObstacles = opts.getObstacles || (() => []);
+  const phase = opts.getPhase || (() => skinFor(savedLook()));
+  const catW = opts.size || 60;
+  const catH = Math.round(catW * CAT_H / CAT_W);
+  const reduce = window.matchMedia &&
+                 window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let cols=0, rows=0, free=null, W=0, H=0;
+  let x=0, y=0;                       // her PAW point, in window pixels
+  let path=[], seg=0, raf=0, timer=0, dead=false, facing=1, paused=0, last=0;
+  let mood = 'normal';                // 'normal' | 'alldone' | 'busy'
+
+  const show = p => cat.querySelectorAll('.pose').forEach(el =>
+    el.style.display = el.classList.contains('pose-'+p) ? '' : 'none');
+  const place = () => {
+    cat.style.left = (x - catW/2) + 'px';
+    cat.style.top  = (y - catH) + 'px';
+    cat.style.transform = facing < 0 ? 'scaleX(-1)' : '';
+  };
+  const idx = (c,r) => r*cols + c;
+  const cellOf = (px,py) => [Math.min(cols-1,Math.max(0,Math.floor(px/ROAM_CELL))),
+                             Math.min(rows-1,Math.max(0,Math.floor(py/ROAM_CELL)))];
+  const toPx = ([c,r]) => [c*ROAM_CELL + ROAM_CELL/2, r*ROAM_CELL + ROAM_CELL/2];
+  const isFree = (c,r) => c>=0 && c<cols && r>=0 && r<rows && free[idx(c,r)]===1;
+
+  /* 1 + 2 — read the page, cross out every square she can't fit in */
+  function remap(){
+    // A hidden or backgrounded tab reports zero size. Rebuilding then would
+    // wipe the map and strand her, so keep the last good one instead.
+    if (innerWidth < 40 || innerHeight < 40) return;
+    W = innerWidth; H = innerHeight;
+    cols = Math.ceil(W/ROAM_CELL); rows = Math.ceil(H/ROAM_CELL);
+    const blocked = new Uint8Array(cols*rows);
+    for (const r of getObstacles()){
+      if (!r || r.width <= 0 || r.height <= 0) continue;
+      const c0=Math.floor((r.left-ROAM_PAD)/ROAM_CELL), c1=Math.floor((r.right+ROAM_PAD)/ROAM_CELL);
+      const r0=Math.floor((r.top-ROAM_PAD)/ROAM_CELL),  r1=Math.floor((r.bottom+ROAM_PAD)/ROAM_CELL);
+      for (let ry=Math.max(0,r0); ry<=Math.min(rows-1,r1); ry++)
+        for (let cx=Math.max(0,c0); cx<=Math.min(cols-1,c1); cx++) blocked[idx(cx,ry)] = 1;
+    }
+    /* Grow every blocked patch by her own size, so from here on she can be
+       treated as a single point at her paws. Her body sits ABOVE her paws, so
+       this grows upward but not downward. */
+    const halfW = Math.ceil((catW/2)/ROAM_CELL), up = Math.ceil(catH/ROAM_CELL);
+    free = new Uint8Array(cols*rows);
+    for (let r=0; r<rows; r++) for (let c=0; c<cols; c++){
+      /* The last row and column are only a sliver of a cell, so a cell index
+         being in range is NOT the same as her body being on screen. Check the
+         real pixel box — without this she clips a pixel past the right edge. */
+      const px=c*ROAM_CELL+ROAM_CELL/2, py=r*ROAM_CELL+ROAM_CELL/2;
+      let ok = !(px-catW/2 < 0 || px+catW/2 > W || py-catH < 0 || py > H);
+      for (let ry=r-up; ry<=r && ok; ry++)
+        for (let cx=c-halfW; cx<=c+halfW; cx++){
+          if (cx<0 || cx>=cols || ry<0 || ry>=rows){ ok=false; break; }
+          if (blocked[idx(cx,ry)]){ ok=false; break; }
+        }
+      free[idx(c,r)] = ok ? 1 : 0;
+    }
+  }
+
+  /* the nearest square she can stand in — for when the page reshuffles under her */
+  function nearestFree(c,r){
+    if (isFree(c,r)) return [c,r];
+    for (let rad=1; rad<Math.max(cols,rows); rad++)
+      for (let dr=-rad; dr<=rad; dr++) for (let dc=-rad; dc<=rad; dc++){
+        if (Math.max(Math.abs(dr),Math.abs(dc)) !== rad) continue;
+        if (isFree(c+dc, r+dr)) return [c+dc, r+dr];
+      }
+    return null;
+  }
+
+  /* 3 — shortest route through free squares. Eight directions, but never
+         squeezing diagonally through the corner between two blocked squares. */
+  const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  function route(from, to){
+    const prev = new Int32Array(cols*rows).fill(-1);
+    const seen = new Uint8Array(cols*rows);
+    const q = [idx(from[0],from[1])];
+    seen[q[0]] = 1;
+    const goal = idx(to[0],to[1]);
+    for (let head=0; head<q.length; head++){
+      const cur = q[head];
+      if (cur === goal) break;
+      const c = cur % cols, r = (cur - c)/cols;
+      for (const [dc,dr] of DIRS){
+        const nc=c+dc, nr=r+dr;
+        if (!isFree(nc,nr)) continue;
+        if (dc && dr && !(isFree(c+dc,r) && isFree(c,r+dr))) continue;
+        const n = idx(nc,nr);
+        if (seen[n]) continue;
+        seen[n]=1; prev[n]=cur; q.push(n);
+      }
+    }
+    if (!seen[goal]) return null;
+    const out=[]; let cur=goal;
+    while (cur !== -1){ const c=cur%cols; out.push([c,(cur-c)/cols]); cur=prev[cur]; }
+    return out.reverse();
+  }
+
+  /* 4 — keep only the corners she actually has to turn at */
+  function clearLine(a,b){
+    const steps = Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1]) * 2);
+    for (let i=0;i<=steps;i++){
+      const t = steps ? i/steps : 0;
+      if (!isFree(Math.round(a[0]+(b[0]-a[0])*t), Math.round(a[1]+(b[1]-a[1])*t))) return false;
+    }
+    return true;
+  }
+  function simplify(cells){
+    const out=[cells[0]]; let i=0;
+    while (i < cells.length-1){
+      let j = cells.length-1;
+      while (j > i+1 && !clearLine(cells[i], cells[j])) j--;
+      out.push(cells[j]); i = j;
+    }
+    return out;
+  }
+
+  /* Is the route she's already walking still safe?
+     Her path was planned against the layout as it was WHEN SHE SET OFF. Switch
+     view, pan the board, or re-render a column and that plan can now run
+     straight through a task card — so after any reshuffle, check the part she
+     hasn't walked yet before letting her carry on. */
+  function pathStillClear(){
+    if (!cols || !free) return false;
+    if (!isFree(...cellOf(x,y))) return false;      // the ground under her moved
+    if (seg >= path.length) return true;            // resting, and still on safe ground
+    let prev = cellOf(x,y);
+    for (let i=seg; i<path.length; i++){
+      const c = cellOf(path[i][0], path[i][1]);
+      if (!isFree(...c) || !clearLine(prev, c)) return false;
+      prev = c;
+    }
+    return true;
+  }
+
+  /* what she feels like doing, tipped by how your homework is going */
+  function moodPoses(){
+    if (mood === 'alldone') return ['nap','nap','nap','lounge','sit'];
+    if (mood === 'busy')    return ['sit','sit','groom','sit'];   // no napping on the job
+    return MOODS[phase()] || MOODS.night;
+  }
+  function restMs(){
+    const base = REST[phase()] || REST.night;
+    const ms = base[0] + Math.random()*base[1];
+    if (mood === 'busy')    return ms * 0.35;   // restless, up again quickly
+    if (mood === 'alldone') return ms * 2.2;    // nothing left to do, so a proper snooze
+    return ms;
+  }
+  function rest(){
+    if (dead) return;
+    const m = moodPoses();
+    show(m[Math.floor(Math.random()*m.length)]);
+    clearTimeout(timer);
+    timer = setTimeout(go, restMs());
+  }
+
+  /* pick somewhere to go and set off */
+  function go(){
+    if (dead) return;
+    remap();
+    if (!cols || !rows) { clearTimeout(timer); timer = setTimeout(go, 1500); return; }
+    const here = nearestFree(...cellOf(x,y));
+    // Nowhere to stand at all (a packed calendar month, a tiny window).
+    // Sit tight and look again shortly rather than teleport somewhere silly.
+    if (!here) { show('sit'); clearTimeout(timer); timer = setTimeout(go, 2000); return; }
+    [x,y] = toPx(here); place();
+    cat.style.visibility = '';        // she has a real spot now, so let her be seen
+
+    let cells = null;
+    for (let tries=0; tries<40 && !cells; tries++){
+      const c = Math.floor(Math.random()*cols), r = Math.floor(Math.random()*rows);
+      if (!isFree(c,r)) continue;
+      const [tx,ty] = toPx([c,r]);
+      if (Math.hypot(tx-x, ty-y) < Math.min(W,H)*0.25) continue;   // no pointless shuffles
+      cells = route(here, [c,r]);
+    }
+    // boxed into a pocket she can't walk out of — settle down instead of twitching
+    if (!cells){ return rest(); }
+
+    path = simplify(cells).map(toPx);
+    seg = 1;
+    show('walk');
+    cancelAnimationFrame(raf);
+    last = performance.now();
+    raf = requestAnimationFrame(step);
+  }
+
+  function step(now){
+    if (dead) return;
+    const dt = Math.min(0.05, (now-last)/1000); last = now;
+    // hidden view or backgrounded tab → stop burning battery, look again later
+    if (!stage.isConnected || stage.getClientRects().length === 0){
+      cancelAnimationFrame(raf); clearTimeout(timer);
+      timer = setTimeout(go, 1500); return;
+    }
+    if (paused > now){ raf = requestAnimationFrame(step); return; }
+
+    let move = ROAM_SPEED_BW * catW * dt;   // px this frame — same pace every direction
+    while (move > 0 && seg < path.length){
+      const [tx,ty] = path[seg];
+      const d = Math.hypot(tx-x, ty-y);
+      if (d <= move){ x=tx; y=ty; move-=d; seg++; }
+      else {
+        const k = move/d;
+        // deadzone, so a near-vertical step doesn't flip her back and forth
+        if (Math.abs(tx-x) > 2) facing = tx > x ? 1 : -1;
+        x += (tx-x)*k; y += (ty-y)*k; move = 0;
+      }
+    }
+    place();
+    if (seg >= path.length) return rest();
+    raf = requestAnimationFrame(step);
+  }
+
+  remap();
+  const start = cols ? nearestFree(...cellOf(innerWidth*0.5, innerHeight*0.8)) : null;
+  if (start){ [x,y] = toPx(start); place(); }
+  else {
+    /* No usable layout yet — a backgrounded tab reports zero size, and a view
+       that hasn't painted has no room in it. Guessing a spot here lands her
+       under the toolbar for a moment, so stay invisible until go() finds her
+       somewhere real to stand. */
+    cat.style.visibility = 'hidden';
+  }
+
+  /* Reduced motion: she simply sits, and never moves again. She still has to
+     sit somewhere sensible though, and go() — which normally finds that spot —
+     never runs here, so settle her the moment a real layout turns up. */
+  if (reduce){
+    show('sit');
+    const settle = () => {
+      remap();
+      if (!cols) { timer = setTimeout(settle, 500); return; }
+      const spot = nearestFree(...cellOf(innerWidth*0.5, innerHeight*0.8));
+      if (!spot) { timer = setTimeout(settle, 1500); return; }
+      [x,y] = toPx(spot); place(); cat.style.visibility = '';
+    };
+    if (!start) settle();
+    return {
+      stop(){ dead = true; clearTimeout(timer); },
+      rebuild(){ if (!dead) settle(); },     // stay out of the way when things move
+      perkUp(){}, setMood(){}, reduced:true
+    };
+  }
+  show('walk');
+  go();
+
+  return {
+    stop(){ dead=true; cancelAnimationFrame(raf); clearTimeout(timer); },
+    /* The page reflowed (view switch, pan, zoom, resize, re-render). Re-read
+       the layout, and if her current route no longer works, drop it and pick a
+       fresh one rather than walking through the new content. */
+    rebuild(){
+      if (dead) return;
+      remap();
+      if (pathStillClear()) return;
+      cancelAnimationFrame(raf); clearTimeout(timer);
+      go();
+    },
+    /* you ticked something off — she stops and looks up for a moment */
+    perkUp(){
+      if (dead) return;
+      show('sit');
+      paused = performance.now() + 1800;
+      clearTimeout(timer);
+      timer = setTimeout(go, 1800);
+    },
+    setMood(m){ mood = m; },
+    reduced:false
+  };
+}
+
 /* ═══════════ 8 · put the whole thing on the page ═══════════ */
 /* the little row of buttons under the picture */
 function buildPicker(chosen,onPick){
@@ -926,4 +1248,30 @@ export function mountMidnight(container,opts){
     setInterval(paintRoom,10*60*1000);
   }
   return Object.assign(brain,{ repaint:paintRoom, phase:()=>current, look:()=>look });
+}
+
+/* Just the cat, loose on the page — no room, no frame, nothing behind her.
+   The board is drag-and-drop, so her stage MUST stay pointer-events:none;
+   that lives in style.css on .midnight-roam-stage. */
+export function mountMidnightRoam(container, opts){
+  opts = opts || {};
+  if (!container || container.dataset.midnightRoam) return null;
+  container.dataset.midnightRoam = '1';
+
+  const stage = document.createElement('div');
+  stage.className = 'midnight-roam-stage';
+  stage.setAttribute('aria-hidden','true');       // decoration, never content
+  container.appendChild(stage);
+
+  const cat = buildCatSvg();
+  stage.appendChild(cat);
+
+  /* One variable drives BOTH her pace and her leg animation, so the two can
+     never drift apart no matter what size she's drawn at. */
+  const size = opts.size || 60;
+  stage.style.setProperty('--mn-cat-w', size + 'px');
+  stage.style.setProperty('--mn-cycle', (ROAM_STRIDE/ROAM_SPEED_BW).toFixed(3) + 's');
+
+  const brain = initMidnightRoam(cat, opts);
+  return Object.assign(brain, { stage, cat });
 }
