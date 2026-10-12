@@ -5,7 +5,9 @@ import { getAuth, onAuthStateChanged, signOut, updateProfile,
          GoogleAuthProvider,
          signInWithEmailAndPassword,
          createUserWithEmailAndPassword,
-         sendPasswordResetEmail }                                from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+         sendPasswordResetEmail,
+         EmailAuthProvider, reauthenticateWithCredential,
+         updatePassword }                                        from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc,
          collection, addDoc, serverTimestamp }          from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
@@ -846,11 +848,13 @@ function renderBoard() {
       </div>`;
   }).join('');
 
-  // Place the "+ Add column" button to the right of all existing columns
+  // Place the "+ Add column" button to the right of all existing columns.
+  // A brand-new board has none yet: it stays hidden so the layout picker is
+  // the only choice (picking "Blank" brings up its form instead).
   const addColX = columns.length > 0 ? Math.max(...columns.map(c => c.x + 310)) + 24 : 40;
   const addColY = columns.length > 0 ? Math.min(...columns.map(c => c.y)) : 40;
   container.innerHTML += `
-    <div class="column-add-col" id="addColumnBtn" style="left:${addColX}px;top:${addColY}px">
+    <div class="column-add-col${columns.length ? '' : ' hidden'}" id="addColumnBtn" style="left:${addColX}px;top:${addColY}px">
       <span class="column-add-col-icon">＋</span>
       <span class="column-add-col-label">Add column</span>
     </div>`;
@@ -4056,7 +4060,9 @@ const BOARD_TEMPLATES = {
 
 function applyBoardTemplate(tplKey) {
   if (tplKey === 'blank') {
-    // Show the add-column form so they can name their first column
+    // Swap the picker for the add-column form so they can name their first
+    // column. Cancel re-renders the board, which brings the picker back.
+    document.getElementById('boardEmptyState')?.classList.add('hidden');
     showAddColumnForm();
     return;
   }
@@ -4641,6 +4647,96 @@ function updatePwMeter() {
 }
 pwInput.addEventListener('input', updatePwMeter);
 
+// ── Change password (Settings → Password) ──
+// Firebase wants proof it's really you before it changes a password, so we
+// check the current password first ("re-authenticate"), then save the new one.
+// Google sign-in accounts have no TaskNest password, so they just get a note.
+const pwOverlay   = document.getElementById('passwordOverlay');
+const pwForm      = document.getElementById('pwChangeForm');
+const pwNewInput  = document.getElementById('pwNew');
+const pwChangeMsg = document.getElementById('pwChangeMsg');
+const hasPassword = () => !!currentUser?.providerData.some(p => p.providerId === 'password');
+
+function showPwChangeMsg(text, ok) {
+  pwChangeMsg.textContent = text;
+  pwChangeMsg.classList.toggle('ok', !!ok);
+  pwChangeMsg.classList.remove('hidden');
+}
+function updatePwChangeMeter() {
+  const meter = document.getElementById('pwChangeMeter');
+  const { level, text } = passwordStrength(pwNewInput.value);
+  meter.dataset.level = level;
+  meter.querySelector('.pw-meter-text').textContent = text;
+}
+function openPasswordSettings() {
+  pwForm.reset();
+  pwChangeMsg.classList.add('hidden');
+  document.getElementById('pwChangeUser').value = currentUser?.email || '';
+  document.getElementById('pwGoogleNote').classList.toggle('hidden', hasPassword());
+  pwForm.classList.toggle('hidden', !hasPassword());
+  updatePwChangeMeter();
+  pwOverlay.classList.remove('hidden');
+  if (hasPassword()) document.getElementById('pwCurrent').focus();
+}
+function closePasswordSettings() {
+  pwForm.reset();                                   // never leave passwords sitting in the page
+  pwOverlay.classList.add('hidden');
+}
+pwNewInput.addEventListener('input', updatePwChangeMeter);
+document.getElementById('openPasswordSettings').addEventListener('click', openPasswordSettings);
+document.getElementById('closePassword').addEventListener('click', closePasswordSettings);
+document.getElementById('cancelPassword').addEventListener('click', closePasswordSettings);
+pwOverlay.addEventListener('click', e => { if (e.target === pwOverlay) closePasswordSettings(); });
+
+pwForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentUser || !hasPassword()) return;
+  const current = document.getElementById('pwCurrent').value;
+  const next    = pwNewInput.value;
+  const again   = document.getElementById('pwConfirm').value;
+  if (!current)                 return showPwChangeMsg('Type your current password first.');
+  if (next.length < 8)          return showPwChangeMsg('Your new password needs at least 8 characters.');
+  if (next !== again)           return showPwChangeMsg("The two new passwords don't match. Try typing them again.");
+  if (next === current)         return showPwChangeMsg("That's the same as your current password. Pick a new one.");
+  if (passwordStrength(next).level < 2)
+    return showPwChangeMsg('That password is a bit weak. Try making it longer.');
+
+  const btn = document.getElementById('savePassword');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await reauthenticateWithCredential(currentUser,
+      EmailAuthProvider.credential(currentUser.email, current));
+    await updatePassword(currentUser, next);
+    pwForm.reset();
+    updatePwChangeMeter();
+    showPwChangeMsg('✅ Password changed! Use your new one next time you sign in.', true);
+  } catch (err) {
+    const msgs = {
+      'auth/wrong-password':     "Your current password isn't right. Try again.",
+      'auth/invalid-credential': "Your current password isn't right. Try again.",
+      'auth/too-many-requests':  'Too many tries. Wait a few minutes, then try again.',
+      'auth/weak-password':      'Your new password needs at least 8 characters.',
+      'auth/network-request-failed': "Couldn't reach TaskNest. Check your internet and try again.",
+    };
+    showPwChangeMsg(msgs[err.code] || 'Something went wrong. Your password was not changed.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Change password';
+  }
+});
+
+// the backup plan: forgot the current one? email a reset link instead
+document.getElementById('pwSendReset').addEventListener('click', async () => {
+  if (!currentUser?.email) return;
+  try {
+    await sendPasswordResetEmail(auth, currentUser.email);
+    showPwChangeMsg(`✅ Reset link sent to ${currentUser.email}. Check your inbox (and spam).`, true);
+  } catch (e) {
+    showPwChangeMsg(e.code === 'auth/too-many-requests'
+      ? 'Too many tries. Wait a few minutes, then try again.'
+      : 'Could not send the reset email. Try again in a moment.');
+  }
+});
+
 // Entry page → smoothly fade into the sign-in card.
 // "signup" also opens the email form, ready to create an account.
 function openLoginCard(mode) {
@@ -4747,6 +4843,11 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   const isSignUp = document.getElementById('loginModeToggle').dataset.mode === 'signup';
   if (isSignUp && password.length < 8) {
     showLoginError('Your password needs at least 8 characters.');
+    return;
+  }
+  // the meter has to say at least "Okay" — same rule as Change password
+  if (isSignUp && passwordStrength(password).level < 2) {
+    showLoginError('That password is too weak. Make it longer, or mix in numbers and symbols, until the meter says "Okay" or "Strong".');
     return;
   }
   if (isSignUp && !document.getElementById('signupAge').checked) {

@@ -25,7 +25,7 @@
         || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="style.css?v=landing12" />
+  <link rel="stylesheet" href="style.css?v=landing15" />
 </head>
 <!-- "booting" = we don't know yet if you're signed in, so show the grey
      skeleton instead of flashing the wrong screen. app.js removes it. -->
@@ -847,6 +847,12 @@
       </div>
 
       <div class="settings-section">
+        <h4 class="settings-heading">Password</h4>
+        <p class="modal-hint" id="passwordSettingsHint">Change the password you use to sign in to TaskNest.</p>
+        <button type="button" class="btn-cancel" id="openPasswordSettings">Change password…</button>
+      </div>
+
+      <div class="settings-section">
         <h4 class="settings-heading">Developer Mode</h4>
         <p class="modal-hint">After finishing a task, log how long it actually took. Unlocks a Stats tab in the Plan view.</p>
         <label class="toggle-switch">
@@ -860,6 +866,48 @@
         <button class="btn-cancel" id="cancelSettings">Cancel</button>
         <button class="btn-save" id="saveSettingsBtn">Save Settings</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Change password (opened from Settings) ──
+       Its own panel, like Midnight's window: the new password saves the
+       moment you press the button, not with Settings' Save. -->
+  <div class="modal-overlay hidden" id="passwordOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Change password</h3>
+        <button class="modal-close" id="closePassword" aria-label="Close">✕</button>
+      </div>
+
+      <!-- people who sign in with Google have no TaskNest password -->
+      <p class="modal-hint hidden" id="pwGoogleNote">You sign in with Google, so your password is managed by your Google account. To change it, go to your Google account settings.</p>
+
+      <form class="task-form" id="pwChangeForm" novalidate>
+        <!-- hidden, but lets password managers know which account this is -->
+        <input type="email" id="pwChangeUser" autocomplete="username" hidden readonly />
+        <div class="form-group">
+          <label for="pwCurrent">Current password</label>
+          <input type="password" id="pwCurrent" autocomplete="current-password" required />
+        </div>
+        <div class="form-group">
+          <label for="pwNew">New password</label>
+          <input type="password" id="pwNew" autocomplete="new-password" minlength="8" required />
+          <div id="pwChangeMeter" class="pw-meter" aria-live="polite">
+            <div class="pw-meter-bar"><span></span><span></span><span></span></div>
+            <p class="pw-meter-text">At least 8 characters (0/8)</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="pwConfirm">Type the new password again</label>
+          <input type="password" id="pwConfirm" autocomplete="new-password" required />
+        </div>
+        <p class="pw-change-msg hidden" id="pwChangeMsg" role="status"></p>
+        <button type="button" class="btn-forgot" id="pwSendReset">Forgot your current password? Email me a reset link</button>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelPassword">Cancel</button>
+          <button type="submit" class="btn-save" id="savePassword">Change password</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -986,6 +1034,6 @@
 
   <!-- ?v= busts stale browser caches on deploy — bump it (here and on the
        midnight.js import inside app.js) whenever the scripts change. -->
-  <script type="module" src="app.js?v=landing12"></script>
+  <script type="module" src="app.js?v=landing15"></script>
 </body>
 </html>
