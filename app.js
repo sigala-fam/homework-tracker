@@ -385,16 +385,48 @@ document.getElementById('profilePhotoInput').addEventListener('change', e => {
 });
 
 // Edit display name
-document.getElementById('editNameBtn').addEventListener('click', async () => {
-  const current = currentUser?.displayName || '';
-  const newName = prompt('Enter your name:', current);
-  if (!newName || newName.trim() === current) return;
+// Edit name — a TaskNest modal instead of the browser's prompt()
+function openNameEdit() {
+  const input = document.getElementById('nameEditInput');
+  input.value = currentUser?.displayName || '';
+  document.getElementById('nameEditError').classList.add('hidden');
+  document.getElementById('nameEditOverlay').classList.remove('hidden');
+  input.focus();
+  input.select();
+}
+
+function closeNameEdit() {
+  document.getElementById('nameEditOverlay').classList.add('hidden');
+}
+
+document.getElementById('editNameBtn').addEventListener('click', openNameEdit);
+document.getElementById('closeNameEdit').addEventListener('click', closeNameEdit);
+document.getElementById('cancelNameEdit').addEventListener('click', closeNameEdit);
+document.getElementById('nameEditOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeNameEdit();
+});
+document.getElementById('nameEditOverlay').addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeNameEdit();
+});
+
+document.getElementById('nameEditForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const newName = document.getElementById('nameEditInput').value.trim();
+  const errEl   = document.getElementById('nameEditError');
+  if (!newName) return;
+  if (newName === (currentUser?.displayName || '')) return closeNameEdit();
+  const saveBtn = document.getElementById('saveNameEdit');
+  saveBtn.disabled = true;
   try {
-    await updateProfile(currentUser, { displayName: newName.trim() });
+    await updateProfile(currentUser, { displayName: newName });
     renderProfileInfo();
     renderProfileGreeting();
+    closeNameEdit();
   } catch (err) {
-    alert('Could not update name. Try again.');
+    errEl.textContent = 'Could not update your name. Try again.';
+    errEl.classList.remove('hidden');
+  } finally {
+    saveBtn.disabled = false;
   }
 });
 

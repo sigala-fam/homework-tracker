@@ -25,7 +25,7 @@
         || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="style.css?v=landing15" />
+  <link rel="stylesheet" href="style.css?v=landing16" />
 </head>
 <!-- "booting" = we don't know yet if you're signed in, so show the grey
      skeleton instead of flashing the wrong screen. app.js removes it. -->
@@ -597,6 +597,28 @@
   <!-- ── Edit Board Modal (the ✏️ on a board card) ── -->
   <!-- Replaces the old browser prompt() rename, so the icon and colour can be
        changed in the same place as the name. -->
+  <!-- ── Edit Name modal ── (replaces the old browser prompt()) -->
+  <div class="modal-overlay hidden" id="nameEditOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Edit Name</h3>
+        <button class="modal-close" id="closeNameEdit" aria-label="Close">✕</button>
+      </div>
+      <form id="nameEditForm" class="task-form">
+        <div class="form-group">
+          <label for="nameEditInput">Your name</label>
+          <p class="modal-hint">This is what TaskNest calls you in greetings.</p>
+          <input type="text" id="nameEditInput" maxlength="40" placeholder="e.g. Alex" autocomplete="off" required />
+        </div>
+        <p id="nameEditError" class="login-error hidden"></p>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" id="cancelNameEdit">Cancel</button>
+          <button type="submit" class="btn-save" id="saveNameEdit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="boardEditOverlay">
     <div class="modal modal-sm">
       <div class="modal-header">
@@ -1034,6 +1056,6 @@
 
   <!-- ?v= busts stale browser caches on deploy — bump it (here and on the
        midnight.js import inside app.js) whenever the scripts change. -->
-  <script type="module" src="app.js?v=landing15"></script>
+  <script type="module" src="app.js?v=landing16"></script>
 </body>
 </html>
