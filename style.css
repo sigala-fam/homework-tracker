@@ -2271,8 +2271,13 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
     min-height: calc(100vh - 110px);
   }
 
-  /* Hide the legend sidebar on mobile — not enough room */
-  .cal-sidebar { display: none; }
+  /* Legend moves underneath the calendar (it's the only place that says
+     which color is which class), full width instead of a side column */
+  .cal-sidebar {
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
 
   .cal-panel { width: 100%; }
 
@@ -2305,12 +2310,29 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
   .day-chip { font-size: 8px; padding: 1px 3px; }
 
   /* Weekly view on mobile */
+  /* Weekly view on mobile — Clubs and Personal stack under Homework
+     (labelled, and only when that day has some) instead of being hidden */
   .weekly-header-row,
   .weekly-row { grid-template-columns: 70px 1fr; }
-  .weekly-data-cell:nth-child(3),
-  .weekly-data-cell:nth-child(4),
   .weekly-th:nth-child(3),
   .weekly-th:nth-child(4) { display: none; }
+  .weekly-day-cell { grid-row: span 3; }
+  .weekly-data-cell { border-right: none; min-height: 44px; }
+  .weekly-data-cell:nth-child(3),
+  .weekly-data-cell:nth-child(4) {
+    grid-column: 2;
+    min-height: 0;
+    padding-top: 0;
+  }
+  .weekly-data-cell:nth-child(3):has(> .weekly-nothing),
+  .weekly-data-cell:nth-child(4):has(> .weekly-nothing) { display: none; }
+  .weekly-data-cell:nth-child(3)::before,
+  .weekly-data-cell:nth-child(4)::before {
+    font-size: 9px; font-weight: 800; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .weekly-data-cell:nth-child(3)::before { content: "Clubs"; }
+  .weekly-data-cell:nth-child(4)::before { content: "Personal"; }
 
   /* Day detail panel */
   .day-detail { margin: 0 6px 10px; }
@@ -2327,6 +2349,22 @@ body[data-bg="image"] .status-dot { background: rgba(255,255,255,0.30); }
 
   /* Login card */
   .login-card { padding: 32px 20px; }
+}
+
+/* ══════════════════════════════
+   TOUCHSCREENS  (phones, tablets)
+══════════════════════════════ */
+/* These buttons only fade in on mouse hover, so on a touchscreen (no hover)
+   they'd stay invisible. Always show them there. Any width — iPads too. */
+@media (hover: none) {
+  .column-header-btn,
+  .customize-col-color-btn,
+  .card-delete,
+  .card-subtask-btn,
+  .subtask-del,
+  .detail-event-actions,
+  .home-board-actions,
+  .canvas-image-header { opacity: 1; }
 }
 
 /* ══════════════════════════════════════════════════════════
