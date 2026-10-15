@@ -322,6 +322,7 @@ function showSuggestMsg(text, ok) {
   suggestMsg.classList.toggle('ok', ok);
   suggestMsg.classList.remove('hidden');
 }
+document.getElementById('ddWhatsNew').addEventListener('click', () => { location.href = 'updates.html'; });
 document.getElementById('ddSuggest').addEventListener('click', openSuggest);
 document.getElementById('closeSuggest').addEventListener('click', closeSuggest);
 document.getElementById('cancelSuggest').addEventListener('click', closeSuggest);
